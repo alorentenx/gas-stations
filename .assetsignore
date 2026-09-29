@@ -1,0 +1,10 @@
+# Archivos del repositorio que no se publican en Cloudflare Workers
+# (misma sintaxis que .gitignore)
+
+# Documentación
+README.md
+
+# Control de versiones
+.git
+.gitignore
+.assetsignore

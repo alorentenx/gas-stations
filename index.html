@@ -3,14 +3,18 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="description" content="Mapa de gasolineras de Sevilla con precios oficiales en directo y top 3 más baratas.">
+  <meta name="description" content="Mapa de gasolineras de España con precios oficiales en directo, top 3 más baratas, coste real del viaje y tendencia de precios.">
   <meta name="theme-color" content="#0b0f14" media="(prefers-color-scheme: dark)">
   <meta name="theme-color" content="#f4f6f9" media="(prefers-color-scheme: light)">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <title>Gasolineras Sevilla</title>
+  <meta name="apple-mobile-web-app-title" content="Gasolineras">
+  <title>Gasolineras · Precios oficiales en España</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23ffb020'/%3E%3Cpath d='M20 50V16a4 4 0 0 1 4-4h14a4 4 0 0 1 4 4v34M16 50h30M24 22h14M42 26l6 6v12a3 3 0 0 0 6 0V26l-6-6' fill='none' stroke='%231a1206' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
-  <link id="leafCss" rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <link id="leafCss" rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
   <style>
     /* ================= Tokens ================= */
     :root {
@@ -29,6 +33,8 @@
       --brand-soft: rgba(255, 176, 32, .16);
       --good: #047857;
       --good-soft: rgba(4, 120, 87, .1);
+      --bad: #b91c1c;
+      --bad-soft: rgba(185, 28, 28, .09);
       --focus: #2563eb;
       --shadow-sm: 0 1px 2px rgba(15, 23, 42, .06), 0 1px 3px rgba(15, 23, 42, .08);
       --shadow-md: 0 8px 24px rgba(15, 23, 42, .1);
@@ -55,6 +61,8 @@
         --brand-soft: rgba(255, 176, 32, .14);
         --good: #34d399;
         --good-soft: rgba(52, 211, 153, .12);
+        --bad: #f87171;
+        --bad-soft: rgba(248, 113, 113, .12);
         --focus: #60a5fa;
         --shadow-sm: 0 1px 2px rgba(0, 0, 0, .4);
         --shadow-md: 0 10px 30px rgba(0, 0, 0, .45);
@@ -71,8 +79,9 @@
       font: 15px/1.45 var(--font); -webkit-font-smoothing: antialiased;
       -webkit-tap-highlight-color: transparent;
     }
-    button, input { font: inherit; color: inherit; }
+    button, input, select { font: inherit; color: inherit; }
     button { cursor: pointer; }
+    [hidden] { display: none !important; }
     :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
     .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
     .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
@@ -94,7 +103,7 @@
       display: grid; place-items: center; box-shadow: 0 4px 12px rgba(255, 138, 42, .35);
     }
     .brand-mark svg.i { width: 21px; height: 21px; stroke-width: 2.2; }
-    .brand h1 { margin: 0; font-size: 1.05rem; font-weight: 800; letter-spacing: -.02em; line-height: 1.15; }
+    .brand h1 { margin: 0; font-size: 1.05rem; font-weight: 800; letter-spacing: -.02em; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .brand p { margin: 1px 0 0; font-size: .78rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .live { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--good); margin-right: 5px; vertical-align: 1px; box-shadow: 0 0 0 3px var(--good-soft); }
     .live.demo { background: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
@@ -113,12 +122,20 @@
     .toolbar {
       display: flex; gap: 8px; align-items: center; margin-top: 10px;
       overflow-x: auto; scrollbar-width: none; scroll-snap-type: x proximity;
-      margin-inline: -16px; padding-inline: 16px; padding-bottom: 2px;
+      /* El relleno final (> degradado) deja ver del todo el último filtro al llegar al final */
+      margin-inline: -16px; padding: 0 32px 2px 16px;
       -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 16px, #000 calc(100% - 24px), transparent);
               mask-image: linear-gradient(90deg, transparent 0, #000 16px, #000 calc(100% - 24px), transparent);
     }
     .toolbar::-webkit-scrollbar { display: none; }
+    /* En escritorio no hay scroll oculto: los filtros bajan a una segunda línea si no caben */
+    @media (min-width: 1024px) {
+      .toolbar { flex-wrap: wrap; overflow: visible; margin-inline: 0; padding: 0 0 2px; row-gap: 8px;
+        -webkit-mask-image: none; mask-image: none; }
+      .toolbar .sep.wrap-hide { display: none; }
+    }
     .toolbar .sep { width: 1px; height: 22px; background: var(--line-2); flex: none; }
+    .chips { display: flex; gap: 6px; flex: none; }
     .seg {
       display: inline-flex; flex: none; padding: 3px; gap: 2px;
       background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px;
@@ -143,6 +160,22 @@
     .chip[aria-pressed="true"] { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
     .chip svg.i { width: 16px; height: 16px; }
 
+    /* Desplegables con aspecto de chip (provincia, marca) */
+    .pick { position: relative; flex: none; display: inline-flex; scroll-snap-align: start; }
+    .pick select {
+      appearance: none; -webkit-appearance: none;
+      min-height: 40px; max-width: 220px; padding: 8px 34px 8px 14px; border-radius: 999px;
+      background: var(--surface); border: 1px solid var(--line-2); color: var(--ink);
+      font-size: .86rem; font-weight: 700; cursor: pointer; text-overflow: ellipsis;
+      transition: border-color .15s, background .15s;
+    }
+    .pick select:hover { border-color: var(--brand); }
+    .pick svg.i { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); width: 15px; height: 15px; color: var(--muted); pointer-events: none; }
+    .pick.on select { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
+    .pick.on svg.i { color: var(--brand-ink); }
+    .pick.prov select { padding-left: 34px; }
+    .pick.prov .pin-i { left: 12px; right: auto; color: var(--brand-strong); }
+
     /* ================= Layout ================= */
     .layout {
       max-width: 1440px; margin: 0 auto;
@@ -154,16 +187,15 @@
     .side { grid-area: side; display: grid; gap: 12px; align-content: start; min-width: 0; }
     @media (min-width: 1024px) {
       .layout { grid-template-columns: 390px minmax(0, 1fr); grid-template-areas: "side map"; gap: 16px; padding-top: 16px; }
-      .map-card { position: sticky; top: calc(var(--hdr) + 16px); }
     }
 
     .card {
       background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
-      box-shadow: var(--shadow-sm); padding: 16px;
+      box-shadow: var(--shadow-sm); padding: 16px; min-width: 0;
     }
     .card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
     .card-head h2 { margin: 0; font-size: 1rem; font-weight: 800; letter-spacing: -.01em; }
-    .card-head .meta { font-size: .78rem; color: var(--muted); white-space: nowrap; }
+    .card-head .meta { font-size: .78rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
     .eyebrow { font-size: .7rem; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; color: var(--brand-strong); margin-bottom: 3px; }
 
     /* ================= Map ================= */
@@ -172,7 +204,11 @@
       border-radius: var(--radius); border: 1px solid var(--line); box-shadow: var(--shadow-md);
       height: clamp(340px, 58svh, 640px); background: var(--surface-2);
     }
-    @media (min-width: 1024px) { .map-card { height: calc(100dvh - var(--hdr) - 32px); min-height: 520px; } }
+    /* En escritorio el mapa se queda fijo mientras la columna lateral hace scroll
+       (va después de la regla base para que su position: sticky no quede anulada) */
+    @media (min-width: 1024px) {
+      .map-card { position: sticky; top: calc(var(--hdr) + 16px); align-self: start; height: calc(100dvh - var(--hdr) - 32px); min-height: 520px; }
+    }
     #map { position: absolute; inset: 0; background: var(--surface-2); }
     .status {
       position: absolute; top: 12px; left: 50%; transform: translate(-50%, 0); z-index: 800;
@@ -216,23 +252,37 @@
     @media (max-width: 640px) { .leaflet-control-zoom { display: none; } }
     .leaflet-popup-content-wrapper { background: var(--surface); color: var(--ink); border-radius: 14px; box-shadow: var(--shadow-md); border: 1px solid var(--line-2); }
     .leaflet-popup-tip { background: var(--surface); }
-    .leaflet-popup-content { margin: 14px 16px; min-width: 220px; font-size: .86rem; line-height: 1.45; }
+    .leaflet-popup-content { margin: 14px 16px; min-width: 230px; font-size: .86rem; line-height: 1.45; }
     .leaflet-container a.leaflet-popup-close-button { color: var(--muted); width: 32px; height: 32px; font-size: 20px; line-height: 30px; }
     .pp-brand { font-weight: 800; font-size: .98rem; letter-spacing: -.01em; padding-right: 18px; }
     .pp-addr { color: var(--muted); font-size: .8rem; margin-top: 2px; }
-    .pp-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin: 10px 0 8px; }
+    .pp-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin: 10px 0 6px; }
     .pp-price { font: 800 1.35rem/1 var(--font-mono); color: var(--good); }
     .pp-price small { font-size: .7rem; color: var(--muted); font-weight: 600; }
     .pp-tag { font-size: .72rem; font-weight: 700; padding: 3px 8px; border-radius: 999px; background: var(--surface-2); color: var(--ink-2); white-space: nowrap; }
     .pp-tag.good { background: var(--good-soft); color: var(--good); }
-    .pp-hours { display: flex; gap: 6px; align-items: center; color: var(--ink-2); font-size: .8rem; }
-    .pp-hours svg.i { width: 14px; height: 14px; color: var(--muted); }
+    .pp-trend { font-size: .78rem; font-weight: 600; margin-bottom: 8px; color: var(--muted); }
+    .pp-hours { display: flex; gap: 6px; align-items: flex-start; color: var(--ink-2); font-size: .8rem; }
+    .pp-hours svg.i { width: 14px; height: 14px; color: var(--muted); margin-top: 2px; }
+    .pp-hours b.on { color: var(--good); }
+    .pp-hours b.off { color: var(--bad); }
+    .pp-real { display: flex; gap: 6px; align-items: flex-start; margin-top: 6px; font-size: .8rem; color: var(--ink-2); }
+    .pp-real svg.i { width: 14px; height: 14px; color: var(--muted); margin-top: 2px; }
+    .pp-real b { color: var(--ink); }
+    .pp-actions { display: flex; gap: 8px; margin-top: 12px; }
     .pp-go {
-      display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 12px;
+      flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
       min-height: 40px; border-radius: 10px; background: var(--brand); color: var(--brand-ink) !important;
       font-weight: 800; text-decoration: none; font-size: .86rem;
     }
     .pp-go svg.i { width: 16px; height: 16px; }
+    .pp-btn {
+      width: 40px; height: 40px; flex: none; display: grid; place-items: center;
+      border-radius: 10px; border: 1px solid var(--line-2); background: var(--surface-2); color: var(--ink-2);
+    }
+    .pp-btn:hover { border-color: var(--brand); }
+    .pp-btn[aria-pressed="true"] { color: var(--brand-strong); border-color: var(--brand); }
+    .pp-btn[aria-pressed="true"] svg { fill: currentColor; }
 
     /* ================= Marcadores ================= */
     /* iconSize: null → el contenedor es un punto 0×0 en la coordenada; el pin se coloca
@@ -308,12 +358,76 @@
     .pod .name { display: block; font-weight: 700; font-size: .92rem; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .pod .addr { display: block; color: var(--muted); font-size: .76rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
     .pod .save { display: inline-block; margin-top: 4px; font-size: .7rem; font-weight: 700; color: var(--good); background: var(--good-soft); padding: 2px 7px; border-radius: 999px; }
+    .pod .save.tie { margin-left: 4px; color: var(--ink-2); background: var(--surface-3); }
     .pod .price { font: 800 1.08rem/1 var(--font-mono); color: var(--ink); text-align: right; }
     .pod .price small { display: block; font: 600 .66rem/1.4 var(--font); color: var(--muted); }
 
+    /* ¿Me compensa ir? */
+    .advice {
+      margin-top: 12px; padding: 12px 14px; border-radius: 14px;
+      background: var(--good-soft); border: 1px solid var(--line);
+      font-size: .84rem; line-height: 1.5; color: var(--ink-2);
+    }
+    .advice h3 { margin: 0 0 4px; font-size: .9rem; color: var(--ink); display: flex; gap: 7px; align-items: center; }
+    .advice h3 svg.i { color: var(--good); }
+    .advice p { margin: 4px 0 0; }
+    .advice b { color: var(--ink); }
+    .advice .go {
+      margin-top: 10px; display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 6px 12px;
+      border-radius: 10px; border: 0; background: var(--brand); color: var(--brand-ink); font-weight: 800; font-size: .82rem;
+    }
+    .advice .go svg.i { width: 15px; height: 15px; }
+    .advice small { display: block; margin-top: 8px; color: var(--muted); font-size: .72rem; }
+    .advice-cta {
+      width: 100%; display: flex; gap: 12px; align-items: center; text-align: left; margin-top: 12px;
+      padding: 12px 14px; border-radius: 14px; border: 1px dashed var(--line-2); background: var(--surface-2);
+      color: var(--ink-2); font-size: .8rem; line-height: 1.4; transition: border-color .15s;
+    }
+    .advice-cta:hover { border-color: var(--brand); }
+    .advice-cta b { color: var(--ink); font-size: .9rem; }
+    .advice-cta svg.i { width: 26px; height: 26px; color: var(--brand-strong); }
+
+    /* Tendencia */
+    .tr-hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; margin-bottom: 10px; }
+    .tr-hero strong { font: 800 1.5rem/1 var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+    .tr-hero small { color: var(--muted); font-size: .76rem; font-weight: 600; }
+    .deltas { display: flex; gap: 6px; flex-wrap: wrap; }
+    .delta { font-size: .72rem; font-weight: 700; padding: 3px 8px; border-radius: 999px; background: var(--surface-2); color: var(--ink-2); white-space: nowrap; }
+    .delta.up { background: var(--bad-soft); color: var(--bad); }
+    .delta.down { background: var(--good-soft); color: var(--good); }
+    .tr-chart { position: relative; touch-action: pan-y; }
+    .tr-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+    .tr-chart svg text { font: 600 10px var(--font); fill: var(--muted); }
+    .tr-chart svg text.v { font: 700 10.5px var(--font-mono); fill: var(--ink-2); }
+    .tr-chart .tt {
+      position: absolute; top: 0; transform: translateY(-100%); pointer-events: none;
+      background: var(--surface); border: 1px solid var(--line-2); box-shadow: var(--shadow-md); border-radius: 8px;
+      padding: 4px 8px; font-size: .74rem; font-weight: 600; white-space: nowrap; color: var(--ink);
+    }
+    .tr-chart .tt b { font-family: var(--font-mono); }
+    .tr-foot { margin: 6px 0 0; font-size: .74rem; color: var(--muted); }
+
+    /* Tu coche */
+    .card.car { padding: 12px 16px; }
+    .car summary { list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 10px; cursor: pointer; min-height: 32px; }
+    .car summary::-webkit-details-marker { display: none; }
+    .car summary .l { display: flex; align-items: center; gap: 8px; font-weight: 800; }
+    .car summary .l svg.i { color: var(--brand-strong); }
+    .car summary .meta { font-size: .78rem; color: var(--muted); font-weight: 600; display: flex; align-items: center; gap: 6px; }
+    .car summary .meta svg.i { width: 15px; height: 15px; transition: transform .15s; }
+    .car details[open] summary .meta svg.i { transform: rotate(180deg); }
+    .car-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+    .car-grid label { display: grid; gap: 4px; font-size: .76rem; font-weight: 600; color: var(--muted); }
+    .car-grid input {
+      min-height: 42px; padding: 8px 12px; font-size: 16px; font-family: var(--font-mono);
+      border-radius: 12px; border: 1px solid transparent; background: var(--surface-2); outline: none; width: 100%;
+    }
+    .car-grid input:focus { border-color: var(--focus); background: var(--surface); }
+    .hint { margin: 10px 0 2px; font-size: .74rem; color: var(--muted); line-height: 1.5; }
+
     /* ================= Lista ================= */
-    .list-tools { display: flex; gap: 8px; margin-bottom: 10px; }
-    .search { position: relative; flex: 1; min-width: 0; }
+    .list-tools { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+    .search { position: relative; flex: 1 1 180px; min-width: 0; }
     .search svg.i { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--muted); width: 17px; height: 17px; pointer-events: none; }
     .search input {
       width: 100%; min-height: 42px; padding: 9px 12px 9px 36px;
@@ -323,11 +437,10 @@
     }
     .search input::placeholder { color: var(--muted); }
     .search input:focus { border-color: var(--focus); background: var(--surface); }
-    .list-tools .seg button { padding: 7px 11px; }
+    .list-tools .seg button { padding: 7px 10px; }
     .list-tools .seg button svg.i { width: 15px; height: 15px; vertical-align: -3px; margin-right: 3px; }
 
     .list { display: grid; gap: 2px; }
-    @media (min-width: 1024px) { .list { max-height: calc(100dvh - var(--hdr) - 470px); min-height: 240px; overflow: auto; margin-right: -8px; padding-right: 6px; overscroll-behavior: contain; } }
     .st {
       display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 10px; align-items: center;
       width: 100%; text-align: left; padding: 10px 8px; min-height: 56px;
@@ -337,15 +450,26 @@
     .st:hover { background: var(--surface-2); }
     .st.sel { background: var(--brand-soft); }
     .st .n { font: 700 .76rem/1 var(--font-mono); color: var(--muted); text-align: center; }
+    .st .n.fv { color: var(--brand-strong); font-size: 1rem; }
     .st.top .n { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; color: #3a2800; font-family: var(--font); font-weight: 800; }
     .st.top.t1 .n { background: #ffd54a; } .st.top.t2 .n { background: #d7dee8; color: #3c4450; } .st.top.t3 .n { background: #e09a5a; color: #40220a; }
     .st .nm { display: block; font-weight: 650; font-size: .88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .st .nm .star { color: var(--brand-strong); margin-right: 3px; }
     .st .ad { display: block; font-size: .74rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .os { font-weight: 700; }
+    .os.on { color: var(--good); }
+    .os.off { color: var(--bad); }
     .st .pr { text-align: right; }
     .st .pr b { display: block; font: 800 .95rem/1.2 var(--font-mono); font-variant-numeric: tabular-nums; }
-    .st .bar { display: block; width: 56px; height: 4px; border-radius: 2px; background: var(--surface-3); margin: 5px 0 0 auto; overflow: hidden; }
+    .st .sub { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-top: 4px; min-height: 12px; }
+    .st .bar { display: block; width: 56px; height: 4px; border-radius: 2px; background: var(--surface-3); overflow: hidden; }
     .st .bar i { display: block; height: 100%; border-radius: 2px; }
-    .st .dist { display: block; font-size: .7rem; color: var(--ink-2); font-weight: 600; margin-top: 3px; }
+    .st .dist { font-size: .7rem; color: var(--ink-2); font-weight: 600; white-space: nowrap; }
+    .st .real { font: 700 .7rem/1 var(--font-mono); color: var(--ink); white-space: nowrap; }
+    .tr { font: 700 .66rem/1 var(--font-mono); white-space: nowrap; }
+    .tr.up { color: var(--bad); }
+    .tr.down { color: var(--good); }
+    .tr.eq { color: var(--muted); }
     .empty { text-align: center; color: var(--muted); padding: 28px 12px; font-size: .88rem; }
 
     .sk { border-radius: 10px; background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3) 50%, var(--surface-2) 75%); background-size: 200% 100%; animation: shimmer 1.3s infinite linear; }
@@ -370,6 +494,12 @@
     <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
     <symbol id="i-nav" viewBox="0 0 24 24"><path d="m3 11 18-8-8 18-2-8-8-2Z"/></symbol>
     <symbol id="i-euro" viewBox="0 0 24 24"><path d="M18 6.5A7 7 0 1 0 18 17.5M4 10h9M4 14h9"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21Z"/><circle cx="12" cy="9.5" r="2.5"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3l-5.6 2.9 1.1-6.2L3 9.6l6.2-.9L12 3Z"/></symbol>
+    <symbol id="i-share" viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/></symbol>
+    <symbol id="i-car" viewBox="0 0 24 24"><path d="M3 17v-4.5l2.2-5.2A2 2 0 0 1 7 6h10a2 2 0 0 1 1.8 1.3L21 12.5V17M3 12.5h18M5 17h1M18 17h1M9 17h6"/><circle cx="7.5" cy="17" r="2"/><circle cx="16.5" cy="17" r="2"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></symbol>
   </svg>
 
   <header class="appbar" id="appbar">
@@ -378,7 +508,7 @@
         <div class="brand">
           <span class="brand-mark"><svg class="i"><use href="#i-pump"/></svg></span>
           <div style="min-width:0">
-            <h1>Gasolineras Sevilla</h1>
+            <h1 id="appTitle">Gasolineras</h1>
             <p id="subtitle"><span class="live" id="liveDot"></span>Precios oficiales del Ministerio</p>
           </div>
         </div>
@@ -387,18 +517,25 @@
         </button>
       </div>
       <div class="toolbar" role="toolbar" aria-label="Filtros">
+        <label class="pick prov">
+          <span class="sr-only">Provincia</span>
+          <svg class="i pin-i"><use href="#i-pin"/></svg>
+          <select id="prov"></select>
+          <svg class="i"><use href="#i-chev"/></svg>
+        </label>
         <div class="seg" role="group" aria-label="Zona">
-          <button data-scope="city" aria-pressed="true">Ciudad</button>
+          <button data-scope="city" aria-pressed="true" id="scopeCity">Ciudad</button>
           <button data-scope="prov" aria-pressed="false">Provincia</button>
         </div>
         <span class="sep" aria-hidden="true"></span>
-        <div style="display:flex;gap:6px;flex:none" role="group" aria-label="Carburante" id="fuelChips">
-          <button class="chip" data-fuel="g95" aria-pressed="true">Gasolina 95</button>
-          <button class="chip" data-fuel="diesel" aria-pressed="false">Diésel</button>
-          <button class="chip" data-fuel="g98" aria-pressed="false">Gasolina 98</button>
-          <button class="chip" data-fuel="glp" aria-pressed="false">GLP</button>
-        </div>
-        <span class="sep" aria-hidden="true"></span>
+        <div class="chips" role="group" aria-label="Carburante" id="fuelChips"></div>
+        <span class="sep wrap-hide" aria-hidden="true"></span>
+        <label class="pick" id="brandPick">
+          <span class="sr-only">Marca</span>
+          <select id="brand"><option value="">Todas las marcas</option></select>
+          <svg class="i"><use href="#i-chev"/></svg>
+        </label>
+        <button class="chip" id="btnOpen" aria-pressed="false"><svg class="i"><use href="#i-clock"/></svg>Abiertas ahora</button>
         <button class="chip" id="btnTop" aria-pressed="false"><svg class="i"><use href="#i-trophy"/></svg>Solo top 3</button>
       </div>
     </div>
@@ -406,7 +543,7 @@
 
   <main class="layout">
     <section class="map-card" aria-label="Mapa">
-      <div id="map" role="application" aria-label="Mapa de gasolineras de Sevilla"></div>
+      <div id="map" role="application" aria-label="Mapa de gasolineras"></div>
       <div class="status" id="status" role="status" aria-live="polite"><span class="spinner"></span><span id="statusText">Cargando mapa…</span></div>
       <div class="legend" aria-label="Leyenda">
         <span class="medals" aria-label="Top 3"><i style="background:#ffd54a">1</i><i style="background:#d7dee8;color:#3c4450">2</i><i style="background:#e09a5a;color:#40220a">3</i></span>
@@ -421,14 +558,51 @@
             <div class="eyebrow" id="fuelLabel">Gasolina 95 E5</div>
             <h2 id="hTop">Las 3 más baratas</h2>
           </div>
-          <span class="meta" id="scopeLabel">Sevilla ciudad</span>
+          <span class="meta" id="scopeLabel"></span>
         </div>
         <div class="stats">
-          <div class="stat"><small>Mínimo €/L</small><strong class="good" id="stMin">—</strong></div>
-          <div class="stat"><small>Media €/L</small><strong id="stAvg">—</strong></div>
+          <div class="stat"><small>Mínimo <span class="unit">€/L</span></small><strong class="good" id="stMin">—</strong></div>
+          <div class="stat"><small>Media <span class="unit">€/L</span></small><strong id="stAvg">—</strong></div>
           <div class="stat"><small>Estaciones</small><strong id="stCount">—</strong></div>
         </div>
         <div class="podium" id="podium"></div>
+        <div id="advice"></div>
+      </section>
+
+      <section class="card" id="favCard" aria-labelledby="hFav" hidden>
+        <div class="card-head">
+          <div>
+            <div class="eyebrow">Guardadas</div>
+            <h2 id="hFav">Tus gasolineras</h2>
+          </div>
+          <span class="meta" id="favMeta"></span>
+        </div>
+        <div class="list" id="favList"></div>
+      </section>
+
+      <section class="card" aria-labelledby="hTrend">
+        <div class="card-head">
+          <div>
+            <div class="eyebrow" id="trendFuel">Gasolina 95 E5</div>
+            <h2 id="hTrend">Tendencia 14 días</h2>
+          </div>
+          <span class="meta" id="trendZone"></span>
+        </div>
+        <div id="trend"></div>
+      </section>
+
+      <section class="card car" aria-label="Tu coche">
+        <details id="carBox">
+          <summary>
+            <span class="l"><svg class="i"><use href="#i-car"/></svg>Tu coche</span>
+            <span class="meta"><span id="carSum"></span><svg class="i"><use href="#i-chev"/></svg></span>
+          </summary>
+          <div class="car-grid">
+            <label>Litros a repostar<input id="liters" type="number" min="5" max="150" step="1" inputmode="numeric"></label>
+            <label>Consumo (L/100 km)<input id="cons" type="number" min="2" max="30" step="0.1" inputmode="decimal"></label>
+          </div>
+          <p class="hint">Se usan para el ahorro por depósito y para el coste real: repostaje + gasolina del viaje de ida y vuelta (distancia en línea recta ×1,3 para aproximar la carretera).</p>
+        </details>
       </section>
 
       <section class="card" aria-labelledby="hAll">
@@ -443,15 +617,16 @@
             <input id="q" type="search" placeholder="Buscar marca, calle o pueblo" autocomplete="off" enterkeyhint="search">
           </label>
           <div class="seg" role="group" aria-label="Ordenar">
-            <button data-sort="price" aria-pressed="true" title="Ordenar por precio"><svg class="i"><use href="#i-euro"/></svg>Precio</button>
+            <button data-sort="price" aria-pressed="true" title="Ordenar por precio por litro"><svg class="i"><use href="#i-euro"/></svg>Precio</button>
             <button data-sort="near" aria-pressed="false" title="Ordenar por cercanía (usa tu ubicación)"><svg class="i"><use href="#i-locate"/></svg>Cerca</button>
+            <button data-sort="real" aria-pressed="false" title="Ordenar por coste real: repostaje + viaje (usa tu ubicación)"><svg class="i"><use href="#i-car"/></svg>Real</button>
           </div>
         </div>
         <div class="list" id="list"></div>
       </section>
 
       <p class="note" id="updated"></p>
-      <p class="note">Precios en €/L. Fuente: datos abiertos del Ministerio (Geoportal de gasolineras) · Mapa: Esri / OpenStreetMap + Leaflet. Necesita conexión a internet.</p>
+      <p class="note">Precios en €/L (€/kg en gases). Fuente: datos abiertos del Ministerio (Geoportal de gasolineras) · Mapa: Esri / OpenStreetMap + Leaflet. Se ocultan las estaciones de venta restringida (solo socios).</p>
     </div>
   </main>
 
@@ -460,7 +635,7 @@
     /* Datos de ejemplo (precios reales de Sevilla, sep-2026) por si la API falla */
     const SAMPLE = [
       {rot:"PLENERGY",dir:"CALLE METALURGIA, S/N",loc:"SEVILLA",cp:"41007",lat:37.412639,lon:-5.951139,g95:1.759,diesel:1.765,g98:null,hor:"L-D: 24H"},
-      {rot:"PERTROPRIX",dir:"CALLE METALURGIA, S/N",loc:"CALONGE",cp:"41007",lat:37.40375,lon:-5.96025,g95:1.759,diesel:1.765,g98:null,hor:"L-D: 24H"},
+      {rot:"PETROPRIX",dir:"CALLE METALURGIA, S/N",loc:"CALONGE",cp:"41007",lat:37.40375,lon:-5.96025,g95:1.759,diesel:1.765,g98:null,hor:"L-D: 24H"},
       {rot:"MOOVE",dir:"CALLE ASTRONOMIA, 3",loc:"SEVILLA",cp:"41015",lat:37.426833,lon:-5.975417,g95:1.769,diesel:1.779,g98:null,hor:"L-D: 24H"},
       {rot:"RONDA NORTE",dir:"AUTOVIA SE30 NUDO CALONGE KM. SN",loc:"SEVILLA",cp:"41007",lat:37.413833,lon:-5.949583,g95:1.769,diesel:1.776,g98:null,hor:"L: 24H"},
       {rot:"ALCAMPO S.A.",dir:"CALLE RONDA DEL TAMARGUILLO, S/N",loc:"SEVILLA",cp:"41006",lat:37.370472,lon:-5.965194,g95:1.779,diesel:1.809,g98:1.927,hor:"L-D: 24H"},
@@ -470,21 +645,116 @@
     ];
     const $ = id => document.getElementById(id);
     const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-    const fold = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    const fold = s => String(s || '').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().trim();
     const isDesktop = () => window.matchMedia('(min-width: 1024px)').matches;
     /* "CALLE METALURGIA, S/N" → "Calle Metalurgia, S/N" */
     const nice = s => String(s || '').toLowerCase().replace(/(^|[\s(\-/.])([a-záéíóúñü])/g, (m, a, b) => a + b.toUpperCase()).replace(/\bS\/n\b/g, 'S/N');
+    const brandName = b => b.length <= 3 ? b : nice(b);
     const icon = id => `<svg class="i"><use href="#${id}"/></svg>`;
+    const pad = n => String(n).padStart(2, '0');
+    const eur2 = n => n.toFixed(2).replace('.', ',');
+    const ctsTxt = d => Math.abs(d * 100).toFixed(1).replace('.', ',');
+
+    /* Almacenamiento local: puede no existir (modo privado, bloqueos), nunca debe romper la app */
+    const store = {
+      get(k, d = null) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+      set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } }
+    };
+    /* Guarda un valor grande; si no cabe, libera las cachés de otras provincias y reintenta */
+    function storeBig(key, value) {
+      if (store.set(key, value)) return;
+      try {
+        Object.keys(localStorage)
+          .filter(k => /^gs\.(data|hist)\./.test(k) && !k.endsWith('.' + state.prov))
+          .forEach(k => localStorage.removeItem(k));
+      } catch (e) { /* sin almacenamiento */ }
+      store.set(key, value);
+    }
+
+    /* ---------- Provincias: [nombre, capital, municipio de la capital en la API, lat, lon] ---------- */
+    const PROVS = {
+      '01': ['Álava', 'Vitoria-Gasteiz', 'Vitoria-Gasteiz', 42.847, -2.672],
+      '02': ['Albacete', 'Albacete', 'Albacete', 38.994, -1.858],
+      '03': ['Alicante', 'Alicante', 'Alicante/Alacant', 38.345, -0.481],
+      '04': ['Almería', 'Almería', 'Almería', 36.834, -2.464],
+      '05': ['Ávila', 'Ávila', 'Ávila', 40.656, -4.700],
+      '06': ['Badajoz', 'Badajoz', 'Badajoz', 38.879, -6.970],
+      '07': ['Illes Balears', 'Palma', 'Palma de Mallorca', 39.570, 2.650],
+      '08': ['Barcelona', 'Barcelona', 'Barcelona', 41.388, 2.170],
+      '09': ['Burgos', 'Burgos', 'Burgos', 42.344, -3.697],
+      '10': ['Cáceres', 'Cáceres', 'Cáceres', 39.476, -6.372],
+      '11': ['Cádiz', 'Cádiz', 'Cádiz', 36.527, -6.289],
+      '12': ['Castellón', 'Castellón', 'Castellón de la Plana/Castelló de la Plana', 39.986, -0.051],
+      '13': ['Ciudad Real', 'Ciudad Real', 'Ciudad Real', 38.985, -3.927],
+      '14': ['Córdoba', 'Córdoba', 'Córdoba', 37.888, -4.779],
+      '15': ['A Coruña', 'A Coruña', 'Coruña (A)', 43.362, -8.411],
+      '16': ['Cuenca', 'Cuenca', 'Cuenca', 40.070, -2.137],
+      '17': ['Girona', 'Girona', 'Girona', 41.979, 2.821],
+      '18': ['Granada', 'Granada', 'Granada', 37.177, -3.599],
+      '19': ['Guadalajara', 'Guadalajara', 'Guadalajara', 40.633, -3.167],
+      '20': ['Gipuzkoa', 'Donostia', 'Donostia-San Sebastián', 43.318, -1.981],
+      '21': ['Huelva', 'Huelva', 'Huelva', 37.261, -6.945],
+      '22': ['Huesca', 'Huesca', 'Huesca', 42.136, -0.408],
+      '23': ['Jaén', 'Jaén', 'Jaén', 37.779, -3.785],
+      '24': ['León', 'León', 'León', 42.599, -5.567],
+      '25': ['Lleida', 'Lleida', 'Lleida', 41.617, 0.620],
+      '26': ['La Rioja', 'Logroño', 'Logroño', 42.463, -2.445],
+      '27': ['Lugo', 'Lugo', 'Lugo', 43.012, -7.556],
+      '28': ['Madrid', 'Madrid', 'Madrid', 40.417, -3.704],
+      '29': ['Málaga', 'Málaga', 'Málaga', 36.721, -4.421],
+      '30': ['Murcia', 'Murcia', 'Murcia', 37.992, -1.131],
+      '31': ['Navarra', 'Pamplona', 'Pamplona/Iruña', 42.812, -1.646],
+      '32': ['Ourense', 'Ourense', 'Ourense', 42.336, -7.864],
+      '33': ['Asturias', 'Oviedo', 'Oviedo', 43.361, -5.849],
+      '34': ['Palencia', 'Palencia', 'Palencia', 42.010, -4.528],
+      '35': ['Las Palmas', 'Las Palmas de G.C.', 'Palmas de Gran Canaria (Las)', 28.124, -15.430],
+      '36': ['Pontevedra', 'Pontevedra', 'Pontevedra', 42.431, -8.644],
+      '37': ['Salamanca', 'Salamanca', 'Salamanca', 40.970, -5.664],
+      '38': ['Santa Cruz de Tenerife', 'S. C. de Tenerife', 'Santa Cruz de Tenerife', 28.464, -16.251],
+      '39': ['Cantabria', 'Santander', 'Santander', 43.462, -3.810],
+      '40': ['Segovia', 'Segovia', 'Segovia', 40.943, -4.109],
+      '41': ['Sevilla', 'Sevilla', 'Sevilla', 37.389, -5.984],
+      '42': ['Soria', 'Soria', 'Soria', 41.764, -2.465],
+      '43': ['Tarragona', 'Tarragona', 'Tarragona', 41.119, 1.245],
+      '44': ['Teruel', 'Teruel', 'Teruel', 40.345, -1.106],
+      '45': ['Toledo', 'Toledo', 'Toledo', 39.863, -4.027],
+      '46': ['Valencia', 'Valencia', 'Valencia', 39.470, -0.376],
+      '47': ['Valladolid', 'Valladolid', 'Valladolid', 41.652, -4.724],
+      '48': ['Bizkaia', 'Bilbao', 'Bilbao', 43.263, -2.935],
+      '49': ['Zamora', 'Zamora', 'Zamora', 41.503, -5.744],
+      '50': ['Zaragoza', 'Zaragoza', 'Zaragoza', 41.649, -0.889],
+      '51': ['Ceuta', 'Ceuta', 'Ceuta', 35.889, -5.321],
+      '52': ['Melilla', 'Melilla', 'Melilla', 35.292, -2.938]
+    };
+
+    /* ---------- Carburantes (key = campo de la API) ---------- */
+    const FUELS = {
+      g95:     { label: 'Gasolina 95 E5',              short: 'Gasolina 95',      key: 'Precio Gasolina 95 E5' },
+      diesel:  { label: 'Gasóleo A (diésel)',          short: 'Diésel',           key: 'Precio Gasoleo A' },
+      g98:     { label: 'Gasolina 98 E5',              short: 'Gasolina 98',      key: 'Precio Gasolina 98 E5' },
+      dieselp: { label: 'Gasóleo Premium',             short: 'Diésel Premium',   key: 'Precio Gasoleo Premium' },
+      g95p:    { label: 'Gasolina 95 E5 Premium',      short: '95 Premium',       key: 'Precio Gasolina 95 E5 Premium' },
+      g95e10:  { label: 'Gasolina 95 E10',             short: '95 E10',           key: 'Precio Gasolina 95 E10' },
+      hvo:     { label: 'Diésel renovable (HVO)',      short: 'Diésel renovable', key: 'Precio Diésel Renovable' },
+      glp:     { label: 'GLP (autogás)',               short: 'GLP',              key: 'Precio Gases licuados del petróleo' },
+      gnc:     { label: 'Gas natural comprimido (GNC)', short: 'GNC',             key: 'Precio Gas Natural Comprimido', unit: '€/kg' },
+      h2:      { label: 'Hidrógeno',                   short: 'Hidrógeno',        key: 'Precio Hidrogeno', unit: '€/kg' }
+    };
+    const FUEL_IDS = Object.keys(FUELS);
+    const unit = () => FUELS[state.fuel].unit || '€/L';
+    const isLiquid = () => !FUELS[state.fuel].unit;
+
+    /* Grandes petroleras: todo lo demás cuenta como low-cost */
+    const BIG_RE = /\b(REPSOL|CEPSA|MOEVE|BP|SHELL|GALP|CAMPSA|PETRONOR|Q8|ENI|AGIP|TEXACO)\b/;
 
     /* ---------- Estado ---------- */
-    const FUELS = {
-      g95:    { label: 'Gasolina 95 E5' },
-      diesel: { label: 'Gasóleo A (diésel)' },
-      g98:    { label: 'Gasolina 98 E5' },
-      glp:    { label: 'GLP (autogás)' }
+    const state = {
+      prov: '41', scope: 'city', fuel: 'g95', onlyTop: false, onlyOpen: false, brand: '',
+      sort: 'price', query: '', user: null, rows: [], top3: [], avg: 0, selected: null
     };
-    const state = { scope: 'city', fuel: 'g95', onlyTop: false, sort: 'price', query: '', user: null, rows: [], top3: [], avg: 0, selected: null };
-    let all = [], markers = [], map = null, demoMode = false, userMarker = null;
+    const prefs = Object.assign({ liters: 50, cons: 6.5 }, store.get('gs.prefs', {}));
+    const favs = new Set(store.get('gs.favs', []));
+    let all = [], markers = [], map = null, demoMode = false, userMarker = null, pendingFocus = null;
 
     /* ---------- Estado del mapa (pastilla superior) ---------- */
     let statusTimer = null;
@@ -499,9 +769,12 @@
     }
 
     /* ---------- Carga de Leaflet con reservas ---------- */
-    function loadScript(src) {
+    /* SRI de Leaflet 1.9.4 (idéntico en los tres CDN) */
+    const LEAFLET_JS_SRI = 'sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=';
+    function loadScript(src, integrity) {
       return new Promise((resolve, reject) => {
         const s = document.createElement('script');
+        if (integrity) { s.integrity = integrity; s.crossOrigin = ''; }
         s.src = src; s.onload = resolve;
         s.onerror = () => reject(new Error('No carga ' + src));
         document.head.appendChild(s);
@@ -517,7 +790,7 @@
       let lastErr = null;
       for (let i = 0; i < urls.length; i++) {
         try {
-          await loadScript(urls[i]);
+          await loadScript(urls[i], LEAFLET_JS_SRI);
           if (window.L) {
             if (i > 0) $('leafCss').href = urls[i].replace('leaflet.js', 'leaflet.css');
             return;
@@ -528,56 +801,77 @@
     }
 
     /* ---------- Datos ---------- */
-    const API = 'https://energia.serviciosmin.gob.es/ServiciosRestCarburantes/PreciosCarburantes/EstacionesTerrestres/FiltroProvincia/41';
+    const BASE = 'https://energia.serviciosmin.gob.es/ServiciosRestCarburantes/PreciosCarburantes/';
+    const apiNow = prov => BASE + 'EstacionesTerrestres/FiltroProvincia/' + prov;
+    const apiHist = (prov, d) => BASE + 'EstacionesTerrestresHist/FiltroProvincia/' + pad(d.getDate()) + '-' + pad(d.getMonth() + 1) + '-' + d.getFullYear() + '/' + prov;
+    const FRESH_MS = 30 * 60 * 1000;   // la API se actualiza cada ~30 min
     const num = v => {
       if (v == null || v === '') return null;
       const n = parseFloat(String(v).replace(',', '.'));
       return Number.isFinite(n) ? n : null;
     };
-    const eur = n => n.toFixed(3) + ' €';
 
-    function normalizeApiRow(s, i) {
+    /* Algunas estaciones traen coordenadas erróneas (0,0, signo cambiado…): fuera de España se descartan */
+    const inSpain = (lat, lon) => lat != null && lon != null && lat > 27 && lat < 44.5 && lon > -18.5 && lon < 4.6;
+
+    function normalizeApiRow(s, i, prov) {
+      const p = {};
+      let lat = num(s.Latitud), lon = num(s['Longitud (WGS84)']);
+      if (!inSpain(lat, lon)) lat = lon = null;
+      FUEL_IDS.forEach(f => { const v = num(s[FUELS[f].key]); if (v != null) p[f] = v; });
+      const rot = String(s['Rótulo'] || 'Sin rótulo').trim();
       return {
-        id: s.IDEESS || ('api-' + i),
-        rot: s['Rótulo'] || 'Sin rótulo',
+        id: String(s.IDEESS || ('api-' + i)),
+        rot, brand: rot.toUpperCase(),
         dir: s['Dirección'] || '',
         loc: s.Localidad || s.Municipio || '',
         cp: s['C.P.'] || '',
-        lat: num(s.Latitud), lon: num(s['Longitud (WGS84)']),
-        g95: num(s['Precio Gasolina 95 E5']),
-        diesel: num(s['Precio Gasoleo A']),
-        g98: num(s['Precio Gasolina 98 E5']),
-        glp: num(s['Precio Gases licuados del petróleo']),
+        lat, lon,
+        p,
         hor: s.Horario || '',
-        mun: (s.Municipio || '').trim().toUpperCase(),
-        city: (s.Municipio || '').trim().toUpperCase() === 'SEVILLA'
+        /* P = venta al público, R = restringida (cooperativas, solo socios) */
+        venta: String(s['Tipo Venta'] || 'P').trim().toUpperCase(),
+        city: fold(s.Municipio) === fold(PROVS[prov][2])
       };
     }
     function normalizeSample(s, i) {
-      return { id: 'demo-' + i, rot: s.rot, dir: s.dir, loc: s.loc, cp: s.cp,
-        lat: s.lat, lon: s.lon, g95: s.g95, diesel: s.diesel, g98: s.g98, glp: null,
-        hor: s.hor, mun: 'SEVILLA', city: true };
+      const p = { g95: s.g95, diesel: s.diesel };
+      if (s.g98 != null) p.g98 = s.g98;
+      return { id: 'demo-' + i, rot: s.rot, brand: s.rot.toUpperCase(), dir: s.dir, loc: s.loc, cp: s.cp,
+        lat: s.lat, lon: s.lon, p, hor: s.hor, venta: 'P', city: true };
     }
 
-    async function fetchPrices() {
+    /* La API a veces tarda mucho: se corta a los `ms` para pasar a la siguiente fuente */
+    async function fetchJSON(url, ms) {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), ms);
       try {
-        const res = await fetch(API, { headers: { Accept: 'application/json' } });
+        const res = await fetch(url, { headers: { Accept: 'application/json' }, signal: ctrl.signal });
         if (!res.ok) throw new Error('HTTP ' + res.status);
-        return { data: await res.json(), demo: false };
-      } catch (e1) {
-        const proxies = [
-          'https://corsproxy.io/?url=' + encodeURIComponent(API),
-          'https://api.allorigins.win/raw?url=' + encodeURIComponent(API)
-        ];
-        for (const p of proxies) {
-          try {
-            const res = await fetch(p, { headers: { Accept: 'application/json' } });
-            if (!res.ok) continue;
-            return { data: await res.json(), demo: false };
-          } catch (e2) { /* siguiente */ }
-        }
-        return { data: null, demo: true };
+        return await res.json();
+      } finally {
+        clearTimeout(timer);
       }
+    }
+
+    /* API directa y, si falla (CORS, caída), dos proxys. Se recuerda la última fuente que funcionó. */
+    const SOURCES = [
+      u => u,
+      u => 'https://corsproxy.io/?url=' + encodeURIComponent(u),
+      u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u)
+    ];
+    let sourceIdx = 0;
+    async function fetchWithFallback(url, ms) {
+      let last = null;
+      for (let k = 0; k < SOURCES.length; k++) {
+        const i = (sourceIdx + k) % SOURCES.length;
+        try {
+          const data = await fetchJSON(SOURCES[i](url), i ? ms + 2000 : ms);
+          sourceIdx = i;
+          return data;
+        } catch (e) { last = e; }
+      }
+      throw last || new Error('Sin datos');
     }
 
     /* ---------- Teselas ----------
@@ -589,8 +883,7 @@
       });
       let errors = 0, switched = false;
       esri.on('tileerror', () => {
-        errors++;
-        if (errors > 8 && !switched) {
+        if (++errors > 8 && !switched) {
           switched = true;
           map.removeLayer(esri);
           L.tileLayer('https://tile.openstreetmap.de/{z}/{x}/{y}.png', {
@@ -600,6 +893,178 @@
       });
       esri.addTo(map);
     }
+
+    /* ---------- Horarios ("L-V: 06:00-22:00; S-D: 07:00-15:00", "L-D: 24H"…) ---------- */
+    const DAY_CH = 'LMXJVSD';
+    const DAY_NAMES = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
+    const hhmm = m => pad(Math.floor(m / 60) % 24) + ':' + pad(m % 60);
+    const schedCache = new Map();
+
+    function expandDays(txt) {
+      const out = [];
+      for (const part of txt.split(',')) {
+        const [a, b] = part.split('-').map(x => DAY_CH.indexOf(x.trim()));
+        if (a < 0 || b < 0) return null;
+        if (b === undefined) { out.push(a); continue; }
+        for (let d = a; ; d = (d + 1) % 7) { out.push(d); if (d === b) break; }
+      }
+      return out;
+    }
+    /* Devuelve 7 listas (lunes..domingo) de tramos [inicio, fin] en minutos, o null si no se entiende */
+    function parseHours(h) {
+      if (schedCache.has(h)) return schedCache.get(h);
+      let week = null;
+      try {
+        const segs = String(h || '').toUpperCase().split(';').map(x => x.trim()).filter(Boolean);
+        if (segs.length) {
+          week = [[], [], [], [], [], [], []];
+          const days = new Set();
+          for (const seg of segs) {
+            const m = seg.match(/^([LMXJVSD](?:\s*[-,]\s*[LMXJVSD])*)\s*:\s*(.+)$/);
+            const ds = m && expandDays(m[1]);
+            if (!ds) { week = null; break; }
+            let ranges;
+            if (/24\s*H/.test(m[2])) ranges = [[0, 1440]];
+            else {
+              ranges = [...m[2].matchAll(/(\d{1,2})[:.](\d{2})\s*-\s*(\d{1,2})[:.](\d{2})/g)].map(x => {
+                const s = +x[1] * 60 + +x[2];
+                let e = +x[3] * 60 + +x[4];
+                if (e === 1439) e = 1440;       // "23:59" = hasta medianoche
+                if (e <= s) e += 1440;          // cruza la medianoche
+                return [s, e];
+              });
+              if (!ranges.length) { week = null; break; }
+            }
+            ds.forEach(d => { week[d].push(...ranges); days.add(d); });
+          }
+          // "L: 24H" suele ser un horario mal rellenado: con un solo día no es fiable
+          if (week && days.size === 1 && segs.length === 1) week = null;
+          week?.forEach(w => w.sort((a, b) => a[0] - b[0]));
+        }
+      } catch (e) { week = null; }
+      schedCache.set(h, week);
+      return week;
+    }
+    /* { open, text, short } o null si el horario no se entiende */
+    function openInfo(hor, now = new Date()) {
+      const w = parseHours(hor);
+      if (!w) return null;
+      if (w.every(day => day.some(([s, e]) => s === 0 && e >= 1440))) return { open: true, text: 'Abierta 24 h', short: '24 h' };
+      const d = (now.getDay() + 6) % 7, min = now.getHours() * 60 + now.getMinutes();
+      let end = null;
+      for (const [s, e] of w[d]) if (min >= s && min < e) end = Math.max(end ?? 0, e);
+      for (const [s, e] of w[(d + 6) % 7]) if (e > 1440 && min < e - 1440) end = Math.max(end ?? 0, e - 1440);
+      if (end != null) {
+        // Si el tramo enlaza con el del día siguiente a las 00:00, sigue abierta
+        let day = d;
+        for (let k = 0; k < 7 && end >= 1440 && w[(day + 1) % 7].some(([s]) => s === 0); k++) {
+          day = (day + 1) % 7;
+          end = Math.max(...w[day].filter(([s]) => s === 0).map(([, e]) => e));
+        }
+        return { open: true, text: 'Abierta · cierra a las ' + hhmm(end % 1440), short: 'Abierta' };
+      }
+      for (let k = 0; k < 7; k++) {
+        const day = (d + k) % 7;
+        const next = w[day].find(([s]) => k > 0 || s > min);
+        if (next) {
+          const when = k === 0 ? 'a las ' : k === 1 ? 'mañana a las ' : 'el ' + DAY_NAMES[day] + ' a las ';
+          return { open: false, text: 'Cerrada · abre ' + when + hhmm(next[0]), short: 'Cerrada' };
+        }
+      }
+      return { open: false, text: 'Cerrada', short: 'Cerrada' };
+    }
+    function openTag(info) {
+      return info ? `<span class="os ${info.open ? 'on' : 'off'}" title="${esc(info.text)}">${esc(info.short)}</span> · ` : '';
+    }
+
+    /* ---------- Distancias y coste real ---------- */
+    function km(a, b) {
+      const R = 6371, rad = x => x * Math.PI / 180;
+      const dLat = rad(b[0] - a[0]), dLon = rad(b[1] - a[1]);
+      const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a[0])) * Math.cos(rad(b[0])) * Math.sin(dLon / 2) ** 2;
+      return 2 * R * Math.asin(Math.sqrt(h));
+    }
+    const fmtDist = d => d < 1 ? Math.round(d * 1000 / 10) * 10 + ' m' : d.toFixed(d < 10 ? 1 : 0).replace('.', ',') + ' km';
+    const ROAD = 1.3;   // la carretera es ~30 % más larga que la línea recta
+    /* Lo que pagas de verdad: los litros que quieres + los que gastas en ir y volver, al precio de esa estación */
+    const realCost = (price, dist) => price * (prefs.liters + 2 * dist * ROAD * prefs.cons / 100);
+
+    /* ---------- Histórico (tendencia y "desde ayer") ---------- */
+    const HIST_DAYS = 14;
+    const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+    const WDAYS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+    const isoDay = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+    const parseIso = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+    const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+    const fmtDay = iso => { const d = parseIso(iso); return d.getDate() + ' ' + MONTHS[d.getMonth()]; };
+    let hist = null;                                   // { prov, days: {iso: agg}, yday: {date, p: {id: {fuel: precio}}} }
+    const histState = { loading: false, done: 0, total: 0 };
+
+    /* Suma y nº de precios por carburante, para la ciudad (c) y la provincia (p) */
+    function aggregate(rows) {
+      const agg = {};
+      rows.forEach(r => {
+        if (r.venta === 'R') return;
+        for (const f in r.p) {
+          const a = agg[f] || (agg[f] = { c: [0, 0], p: [0, 0] });
+          a.p[0] += r.p[f]; a.p[1]++;
+          if (r.city) { a.c[0] += r.p[f]; a.c[1]++; }
+        }
+      });
+      for (const f in agg) { agg[f].c[0] = +agg[f].c[0].toFixed(4); agg[f].p[0] = +agg[f].p[0].toFixed(4); }
+      return agg;
+    }
+    function yPrice(id) {
+      if (!hist || hist.prov !== state.prov || !hist.yday) return null;
+      return hist.yday.p[id]?.[state.fuel] ?? null;
+    }
+
+    async function loadHistory(prov) {
+      const key = 'gs.hist.' + prov;
+      const saved = store.get(key, { days: {}, yday: null });
+      const today = new Date();
+      const want = [];
+      for (let k = HIST_DAYS; k >= 1; k--) want.push(addDays(today, -k));
+      const wanted = new Set(want.map(isoDay));
+      Object.keys(saved.days).forEach(k => { if (!wanted.has(k)) delete saved.days[k]; });
+      const yIso = isoDay(want[want.length - 1]);
+      // Más recientes primero: ayer da las flechas de la lista
+      const missing = want.filter(d => !saved.days[isoDay(d)] || (isoDay(d) === yIso && saved.yday?.date !== yIso)).reverse();
+      hist = { prov, days: saved.days, yday: saved.yday?.date === yIso ? saved.yday : null };
+      Object.assign(histState, { loading: missing.length > 0, done: 0, total: missing.length });
+      refreshHistViews();
+      if (!missing.length) return;
+
+      let next = 0, dirty = false;
+      const worker = async () => {
+        while (next < missing.length && state.prov === prov) {
+          const d = missing[next++];
+          try {
+            const data = await fetchWithFallback(apiHist(prov, d), 15000);
+            const rows = (data.ListaEESSPrecio || []).map((s, j) => normalizeApiRow(s, j, prov));
+            if (rows.length) {
+              saved.days[isoDay(d)] = aggregate(rows);
+              if (isoDay(d) === yIso) {
+                const p = {};
+                rows.forEach(r => { if (r.venta !== 'R' && Object.keys(r.p).length) p[r.id] = r.p; });
+                saved.yday = hist.yday = { date: yIso, p };
+              }
+              dirty = true;
+            }
+          } catch (e) { /* ese día queda sin datos */ }
+          if (state.prov !== prov) return;
+          histState.done++;
+          renderTrend();
+          if (isoDay(d) === yIso) { renderList(); renderFavs(); }
+        }
+      };
+      await Promise.all([worker(), worker(), worker()]);
+      if (state.prov !== prov) return;
+      histState.loading = false;
+      if (dirty) storeBig(key, saved);
+      refreshHistViews();
+    }
+    function refreshHistViews() { renderTrend(); renderList(); renderFavs(); }
 
     /* ---------- Marcadores ---------- */
     /* Por debajo de este zoom, las estaciones fuera del top 3 se pintan como puntos de
@@ -627,8 +1092,14 @@
       return L.divIcon({ className: 'gs-marker', iconSize: null, popupAnchor: [0, -8],
         html: `<div class="dot" style="background:${color}"></div>` });
     }
+    /* Los iconos solo cambian al cruzar PIN_ZOOM: no se rehacen en cada zoom */
+    let lastCompact = null;
+    function onZoom() {
+      if ((map.getZoom() < PIN_ZOOM) !== lastCompact) refreshIcons();
+    }
     function refreshIcons() {
       const compact = map.getZoom() < PIN_ZOOM;
+      lastCompact = compact;
       markers.forEach(m => {
         m.setIcon(iconFor(m.__price, m.__rank));
         if (m.__rank < 0 && compact) {
@@ -638,42 +1109,138 @@
         }
       });
     }
+    function clearMarkers() {
+      markers.forEach(m => map.removeLayer(m));
+      markers = [];
+    }
 
     function popupFor(r) {
       const diff = r.price - state.avg;
       const tag = r.rank < 3
-        ? `<span class="pp-tag good">#${r.rank + 1} más barata</span>`
-        : `<span class="pp-tag ${diff < 0 ? 'good' : ''}">${diff < 0 ? '−' : '+'}${Math.abs(diff * 100).toFixed(1)} cts vs media</span>`;
+        ? `<span class="pp-tag good">#${r.rank + 1} más barata${isTied(r) ? ' (empate)' : ''}</span>`
+        : Math.abs(diff) < 0.0005
+          ? `<span class="pp-tag">En la media</span>`
+          : `<span class="pp-tag ${diff < 0 ? 'good' : ''}">${diff < 0 ? '−' : '+'}${ctsTxt(diff)} cts vs media</span>`;
+      const y = yPrice(r.s.id);
+      const dy = y == null ? null : r.price - y;
+      const info = openInfo(r.s.hor);
+      const isFav = favs.has(r.s.id);
       const el = document.createElement('div');
       el.innerHTML =
         `<div class="pp-brand">${esc(r.s.rot)}</div>` +
         `<div class="pp-addr">${esc(nice(r.s.dir))} · ${esc(nice(r.s.loc))}${r.s.cp ? ' (' + esc(r.s.cp) + ')' : ''}</div>` +
-        `<div class="pp-row"><span class="pp-price">${r.price.toFixed(3)} <small>€/L</small></span>${tag}</div>` +
-        (r.s.hor ? `<div class="pp-hours">${icon('i-clock')}${esc(r.s.hor)}</div>` : '') +
-        `<a class="pp-go" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${r.lat},${r.lon}">${icon('i-nav')}Cómo llegar</a>`;
+        `<div class="pp-row"><span class="pp-price">${r.price.toFixed(3)} <small>${unit()}</small></span>${tag}</div>` +
+        (dy == null ? '' : `<div class="pp-trend">${Math.abs(dy) < 0.0005 ? 'Mismo precio que ayer'
+          : `<span class="tr ${dy > 0 ? 'up' : 'down'}">${dy > 0 ? '▲' : '▼'} ${ctsTxt(dy)} cts</span> desde ayer (${y.toFixed(3)})`}</div>`) +
+        (r.s.hor ? `<div class="pp-hours">${icon('i-clock')}<span>${info ? `<b class="${info.open ? 'on' : 'off'}">${esc(info.text)}</b><br>` : ''}${esc(r.s.hor)}</span></div>` : '') +
+        (r.real != null ? `<div class="pp-real">${icon('i-car')}<span>A ${fmtDist(r.dist)} · ${prefs.liters} L + viaje: <b>${eur2(r.real)} €</b></span></div>` : '') +
+        `<div class="pp-actions">` +
+          `<a class="pp-go" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${r.lat},${r.lon}">${icon('i-nav')}Cómo llegar</a>` +
+          `<button class="pp-btn pp-fav" aria-pressed="${isFav}" aria-label="${isFav ? 'Quitar de' : 'Guardar en'} tus gasolineras" title="${isFav ? 'Quitar de' : 'Guardar en'} tus gasolineras">${icon('i-star')}</button>` +
+          `<button class="pp-btn pp-share" aria-label="Compartir" title="Compartir">${icon('i-share')}</button>` +
+        `</div>`;
+      el.querySelector('.pp-fav').addEventListener('click', e => {
+        const on = toggleFav(r.s.id);
+        const b = e.currentTarget, lbl = (on ? 'Quitar de' : 'Guardar en') + ' tus gasolineras';
+        b.setAttribute('aria-pressed', String(on));
+        b.setAttribute('aria-label', lbl);
+        b.title = lbl;
+      });
+      el.querySelector('.pp-share').addEventListener('click', () => share(r));
       return el;
     }
 
-    /* ---------- Geolocalización ---------- */
-    function km(a, b) {
-      const R = 6371, rad = x => x * Math.PI / 180;
-      const dLat = rad(b[0] - a[0]), dLon = rad(b[1] - a[1]);
-      const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a[0])) * Math.cos(rad(b[0])) * Math.sin(dLon / 2) ** 2;
-      return 2 * R * Math.asin(Math.sqrt(h));
+    /* ---------- Favoritas ---------- */
+    function toggleFav(id) {
+      if (favs.has(id)) favs.delete(id); else favs.add(id);
+      store.set('gs.favs', [...favs]);
+      renderFavs(); renderList();
+      setStatus(favs.has(id) ? 'Guardada en tus gasolineras' : 'Quitada de tus gasolineras');
+      return favs.has(id);
     }
-    const fmtDist = d => d < 1 ? Math.round(d * 1000 / 10) * 10 + ' m' : d.toFixed(d < 10 ? 1 : 0).replace('.', ',') + ' km';
 
-    function locate(fly) {
+    /* ---------- Compartir / estado en la URL ---------- */
+    function hashFor(e = state.selected) {
+      const p = new URLSearchParams();
+      p.set('prov', state.prov);
+      p.set('fuel', state.fuel);
+      if (state.scope === 'prov') p.set('zona', 'prov');
+      if (state.onlyTop) p.set('top', '1');
+      if (state.onlyOpen) p.set('abiertas', '1');
+      if (state.brand) p.set('marca', state.brand);
+      if (e) p.set('e', e);
+      return p.toString();
+    }
+    function writeHash() {
+      const h = '#' + hashFor();
+      if (location.hash !== h) { try { history.replaceState(null, '', h); } catch (e) { /* file:// en algunos navegadores */ } }
+    }
+    function readHash() {
+      const p = new URLSearchParams(location.hash.slice(1));
+      if (!p.has('prov')) return false;
+      if (PROVS[p.get('prov')]) state.prov = p.get('prov');
+      if (FUELS[p.get('fuel')]) state.fuel = p.get('fuel');
+      state.scope = p.get('zona') === 'prov' ? 'prov' : 'city';
+      state.onlyTop = p.get('top') === '1';
+      state.onlyOpen = p.get('abiertas') === '1';
+      state.brand = p.get('marca') || '';
+      pendingFocus = p.get('e');
+      return true;
+    }
+    async function share(r) {
+      const url = location.href.split('#')[0] + '#' + hashFor(r.s.id);
+      const text = `${r.s.rot} (${nice(r.s.loc)}): ${FUELS[state.fuel].short} a ${r.price.toFixed(3)} ${unit()}`;
+      if (navigator.share) {
+        try { await navigator.share({ title: document.title, text, url }); } catch (e) { /* cancelado */ }
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(text + '\n' + url);
+        setStatus('Enlace copiado al portapapeles');
+      } catch (e) {
+        setStatus('No se pudo copiar el enlace', { error: true });
+        setTimeout(() => setStatus(''), 3000);
+      }
+    }
+
+    /* ---------- Geolocalización ---------- */
+    function nearestProvince(pos) {
+      let best = null, bd = Infinity;
+      for (const [id, P] of Object.entries(PROVS)) {
+        const d = km(pos, [P[3], P[4]]);
+        if (d < bd) { bd = d; best = id; }
+      }
+      return best;
+    }
+
+    function locate(fly, sortAfter = 'near') {
       if (!navigator.geolocation) { setStatus('Tu navegador no permite obtener la ubicación', { error: true }); return; }
       setStatus('Buscando tu ubicación…', { loading: true });
-      navigator.geolocation.getCurrentPosition(pos => {
+      navigator.geolocation.getCurrentPosition(async pos => {
         state.user = [pos.coords.latitude, pos.coords.longitude];
         if (userMarker) userMarker.setLatLng(state.user);
         else userMarker = L.marker(state.user, { icon: L.divIcon({ className: 'gs-marker', iconSize: null, html: '<div class="me"></div>' }), zIndexOffset: 20000, interactive: false, keyboard: false }).addTo(map);
         document.querySelector('.locate-btn')?.classList.add('active');
-        setSort('near');
-        if (fly) map.flyTo(state.user, 14, { duration: .9 });
-        setStatus('Ordenado por cercanía a tu ubicación');
+        // ¿Estás fuera de la provincia cargada? Se cambia a la de la capital más cercana
+        let moved = false;
+        const nearest = all.reduce((m, r) => r.lat == null ? m : Math.min(m, km(state.user, [r.lat, r.lon])), Infinity);
+        if (nearest > 25) {
+          const p = nearestProvince(state.user);
+          if (p && p !== state.prov) {
+            changeProvince(p);
+            await load();
+            moved = true;
+          }
+        }
+        if (moved && state.scope === 'city') {
+          state.scope = 'prov';   // estando fuera de la capital, lo útil es ver toda la provincia
+          syncUI();
+        }
+        render({ fit: moved && !fly });   // la cercanía desempata el ranking y activa el coste real
+        setSort(sortAfter);
+        if (fly) map.flyTo(state.user, 13, { duration: .9 });
+        setStatus(moved ? `Provincia de ${PROVS[state.prov][0]} (según tu ubicación)`
+          : sortAfter === 'real' ? 'Ordenado por coste real desde tu ubicación' : 'Ordenado por cercanía a tu ubicación');
       }, () => {
         setSort('price');
         setStatus('No se pudo obtener tu ubicación (permiso denegado o sin señal)', { error: true });
@@ -682,40 +1249,68 @@
     }
 
     /* ---------- Render ---------- */
+    const brandOk = r => !state.brand || (state.brand === 'lowcost' ? !BIG_RE.test(r.brand) : r.brand === state.brand);
+
     function current() {
-      const f = state.fuel;
-      const rows = state.scope === 'city' ? all.filter(r => r.city) : all.slice();
-      return rows
-        .filter(r => r.lat != null && r.lon != null && r[f] != null)
-        .map(r => ({ s: r, price: r[f], lat: r.lat, lon: r.lon }))
-        .sort((a, b) => a.price - b.price)
+      const f = state.fuel, now = new Date();
+      return all
+        .filter(r => r.venta !== 'R' && r.lat != null && r.lon != null && r.p[f] != null
+          && (state.scope === 'prov' || r.city) && brandOk(r)
+          && (!state.onlyOpen || openInfo(r.hor, now)?.open !== false))
+        .map(r => {
+          const o = { s: r, price: r.p[f], lat: r.lat, lon: r.lon, dist: null, real: null };
+          if (state.user) {
+            o.dist = km(state.user, [r.lat, r.lon]);
+            if (isLiquid()) o.real = realCost(o.price, o.dist);
+          }
+          return o;
+        })
+        /* Empates de precio: desempata la cercanía (si hay ubicación) y luego el rótulo */
+        .sort((a, b) => a.price - b.price || (a.dist ?? 0) - (b.dist ?? 0) || a.s.rot.localeCompare(b.s.rot, 'es'))
         .map((r, i) => (r.rank = i, r));
+    }
+
+    /* ¿Comparte precio con la estación anterior o siguiente del ranking? */
+    function isTied(r) {
+      const prev = state.rows[r.rank - 1], next = state.rows[r.rank + 1];
+      return (prev && prev.price === r.price) || (next && next.price === r.price);
     }
 
     function skeleton() {
       $('podium').innerHTML = '<div class="sk" style="height:64px"></div>'.repeat(3);
       $('list').innerHTML = '<div class="sk" style="height:48px;margin:4px 0"></div>'.repeat(6);
+      $('advice').innerHTML = '';
       ['stMin', 'stAvg', 'stCount'].forEach(id => $(id).textContent = '—');
       $('listCount').textContent = '';
     }
 
-    function render() {
+    /* fit: reencuadrar el mapa (solo en la carga, al cambiar de zona o con "Solo top 3") */
+    function render({ fit = false } = {}) {
       if (!map) return;
-      markers.forEach(m => map.removeLayer(m));
-      markers = [];
+      clearMarkers();
       const rows = current();
       state.rows = rows;
-      const label = FUELS[state.fuel].label;
-      const zone = state.scope === 'city' ? 'Sevilla ciudad' : 'Provincia de Sevilla';
-      $('fuelLabel').textContent = label;
+      const F = FUELS[state.fuel], P = PROVS[state.prov];
+      const zone = state.scope === 'city' ? P[1] + ' ciudad' : 'Provincia de ' + P[0];
+      $('fuelLabel').textContent = F.label;
+      $('trendFuel').textContent = F.label;
       $('scopeLabel').textContent = zone;
+      $('trendZone').textContent = 'Media · ' + zone;
+      document.querySelectorAll('.unit').forEach(u => u.textContent = unit());
+      writeHash();
+      renderFavs();
+      renderTrend();
 
       if (!rows.length) {
+        const filtered = state.onlyOpen || state.brand;
         ['stMin', 'stAvg', 'stCount'].forEach(id => $(id).textContent = '—');
-        $('podium').innerHTML = `<div class="empty">No hay estaciones con precio de ${esc(label)} en esta zona.</div>`;
+        $('podium').innerHTML = `<div class="empty">${filtered
+          ? 'Ninguna estación cumple los filtros (' + [state.onlyOpen && 'abiertas ahora', state.brand && 'marca'].filter(Boolean).join(', ') + ').'
+          : `No hay estaciones con precio de ${esc(F.label)} en esta zona.`}</div>`;
+        $('advice').innerHTML = '';
         $('list').innerHTML = '';
         $('listCount').textContent = '0';
-        setStatus('Sin datos para este carburante y zona', { error: true });
+        if (all.length) setStatus('Sin estaciones para este carburante, zona y filtros', { error: true });
         return;
       }
 
@@ -726,24 +1321,27 @@
       $('stCount').textContent = rows.length;
       $('stMin').textContent = top3[0].price.toFixed(3);
       $('stAvg').textContent = state.avg.toFixed(3);
-      setStatus(`${rows.length} gasolineras · ${label}${demoMode ? ' · ejemplo' : ''}`);
+      setStatus(`${rows.length} gasolineras · ${F.short}${demoMode ? ' · ejemplo' : ''}`);
 
       // Podio
       const pod = $('podium'); pod.innerHTML = '';
+      const qty = prefs.liters + (isLiquid() ? ' L' : ' kg');
       top3.forEach((r, i) => {
-        const save = (state.avg - r.price) * 50;
+        const save = (state.avg - r.price) * prefs.liters;
         const b = document.createElement('button');
         b.className = 'pod r' + (i + 1);
         b.innerHTML =
           `<span class="medal m${i + 1}">${i + 1}</span>` +
           `<span style="min-width:0"><span class="name">${esc(r.s.rot)}</span>` +
-          `<span class="addr">${esc(nice(r.s.dir))} · ${esc(nice(r.s.loc))}</span>` +
-          (save >= 0.05 ? `<span class="save">Ahorras ${save.toFixed(2).replace('.', ',')} € por depósito de 50 L</span>` : '') +
+          `<span class="addr">${openTag(openInfo(r.s.hor))}${esc(nice(r.s.dir))} · ${esc(nice(r.s.loc))}</span>` +
+          (save >= 0.05 ? `<span class="save">Ahorras ${eur2(save)} € en ${qty} vs la media</span>` : '') +
+          (isTied(r) ? `<span class="save tie">Empate</span>` : '') +
           `</span>` +
-          `<span class="price">${r.price.toFixed(3)}<small>€/L</small></span>`;
+          `<span class="price">${r.price.toFixed(3)}<small>${unit()}</small></span>`;
         b.addEventListener('click', () => focusStation(r));
         pod.appendChild(b);
       });
+      renderAdvice();
 
       // Marcadores (el más barato queda encima)
       const bounds = [];
@@ -752,11 +1350,11 @@
         const m = L.marker([r.lat, r.lon], {
           icon: iconFor(r.price, rank),
           zIndexOffset: rank >= 0 ? 10000 - rank : -Math.round(r.price * 1000),
-          riseOnHover: true, title: r.s.rot + ' ' + r.price.toFixed(3) + ' €'
+          riseOnHover: true, title: r.s.rot + ' ' + r.price.toFixed(3) + ' ' + unit()
         });
         m.__id = r.s.id; m.__price = r.price; m.__rank = rank;
-        m.__tip = r.s.rot + ' · ' + r.price.toFixed(3) + ' €';
-        m.bindPopup(() => popupFor(r), { maxWidth: 280, autoPanPadding: [20, 70] });
+        m.__tip = r.s.rot + ' · ' + r.price.toFixed(3) + ' ' + unit();
+        m.bindPopup(() => popupFor(r), { maxWidth: 300, autoPanPadding: [20, 70] });
         m.on('popupopen', () => select(r.s.id, true));
         m.on('popupclose', () => select(null));
         m.addTo(map);
@@ -765,39 +1363,202 @@
       });
       refreshIcons();
       renderList();
-      if (bounds.length) map.fitBounds(bounds, { padding: [56, 56], maxZoom: 15 });
+      if (fit && bounds.length) map.fitBounds(bounds, { padding: [56, 56], maxZoom: 15 });
+    }
+
+    /* ¿Me compensa ir? Compara coste real (repostaje + viaje) entre la mejor opción, la más cercana y la más barata */
+    function renderAdvice() {
+      const el = $('advice');
+      if (!isLiquid() || !state.rows.length) { el.innerHTML = ''; return; }
+      if (!state.user) {
+        el.innerHTML = `<button class="advice-cta" id="adviceLocate">${icon('i-car')}<span><b>¿Te compensa ir a la más barata?</b><br>Usa tu ubicación y calculamos el coste real contando el viaje de ida y vuelta.</span></button>`;
+        $('adviceLocate').addEventListener('click', () => locate(false, 'real'));
+        return;
+      }
+      const rows = state.rows;
+      const best = rows.reduce((a, r) => r.real < a.real ? r : a);
+      const nearest = rows.reduce((a, r) => r.dist < a.dist ? r : a);
+      const cheapest = rows[0];
+      const qty = prefs.liters + ' L';
+      let html = `<h3>${icon('i-check')}Te compensa: ${esc(best.s.rot)}</h3>` +
+        `<p>A ${fmtDist(best.dist)} · ${best.price.toFixed(3)} €/L → <b>${eur2(best.real)} €</b> por ${qty} contando el viaje.</p>`;
+      if (nearest !== best) html += `<p>Frente a la más cercana (${esc(nearest.s.rot)}, a ${fmtDist(nearest.dist)}) ahorras <b>${eur2(nearest.real - best.real)} €</b>.</p>`;
+      else html += `<p>Además es la más cercana.</p>`;
+      if (cheapest !== best && cheapest.real - best.real >= 0.01) {
+        html += `<p>La más barata por litro (${esc(cheapest.s.rot)}, a ${fmtDist(cheapest.dist)}) <b>no compensa</b>: te costaría ${eur2(cheapest.real - best.real)} € más por el viaje.</p>`;
+      }
+      html += `<button class="go" id="adviceGo">${icon('i-nav')}Ver en el mapa</button>` +
+        `<small>${prefs.liters} L · ${String(prefs.cons).replace('.', ',')} L/100 km · ida y vuelta. Ajústalo en «Tu coche».</small>`;
+      el.innerHTML = `<div class="advice">${html}</div>`;
+      $('adviceGo').addEventListener('click', () => focusStation(best));
+    }
+
+    function trendTag(p, y) {
+      if (p == null || y == null) return '';
+      const d = p - y;
+      if (Math.abs(d) < 0.0005) return `<span class="tr eq" title="Igual que ayer">=</span>`;
+      return `<span class="tr ${d > 0 ? 'up' : 'down'}" title="${d > 0 ? 'Sube' : 'Baja'} ${ctsTxt(d)} cts desde ayer">${d > 0 ? '▲' : '▼'}${ctsTxt(d)}</span>`;
     }
 
     function renderList() {
       const list = $('list');
+      if (!map || !all.length) return;
       let rows = state.onlyTop ? state.top3 : state.rows;
-      const q = fold(state.query.trim());
+      const q = fold(state.query);
       if (q) rows = rows.filter(r => fold(r.s.rot + ' ' + r.s.dir + ' ' + r.s.loc + ' ' + r.s.cp).includes(q));
-      if (state.user) rows = rows.map(r => (r.dist = km(state.user, [r.lat, r.lon]), r));
-      if (state.sort === 'near' && state.user) rows = rows.slice().sort((a, b) => a.dist - b.dist);
+      if (state.user && state.sort === 'near') rows = rows.slice().sort((a, b) => a.dist - b.dist);
+      if (state.user && state.sort === 'real' && isLiquid()) rows = rows.slice().sort((a, b) => a.real - b.real);
       $('listCount').textContent = rows.length + (rows.length === 1 ? ' estación' : ' estaciones');
 
       if (!rows.length) {
         list.innerHTML = `<div class="empty">${q ? 'Ninguna estación coincide con «' + esc(state.query.trim()) + '».' : 'Sin estaciones.'}</div>`;
         return;
       }
+      const now = new Date();
       list.innerHTML = rows.map(r => {
         const top = r.rank < 3;
         const pct = Math.round(25 + 75 * priceT(r.price));
+        const extra = r.dist == null
+          ? `<span class="bar"><i style="width:${pct}%;background:${priceColor(r.price)}"></i></span>`
+          : state.sort === 'real' && r.real != null
+            ? `<span class="real" title="Coste real: ${prefs.liters} L + viaje">${eur2(r.real)} €</span>`
+            : `<span class="dist">${fmtDist(r.dist)}</span>`;
         return `<button class="st${top ? ' top t' + (r.rank + 1) : ''}${state.selected === r.s.id ? ' sel' : ''}" data-id="${esc(r.s.id)}">` +
           `<span class="n">${r.rank + 1}</span>` +
-          `<span style="min-width:0"><span class="nm">${esc(r.s.rot)}</span><span class="ad">${esc(nice(r.s.dir))} · ${esc(nice(r.s.loc))}</span></span>` +
+          `<span style="min-width:0"><span class="nm">${favs.has(r.s.id) ? '<span class="star" aria-label="Guardada">★</span>' : ''}${esc(r.s.rot)}</span>` +
+          `<span class="ad">${openTag(openInfo(r.s.hor, now))}${esc(nice(r.s.dir))} · ${esc(nice(r.s.loc))}</span></span>` +
           `<span class="pr"><b style="${top ? 'color:var(--good)' : ''}">${r.price.toFixed(3)}</b>` +
-          (state.user ? `<span class="dist">${fmtDist(r.dist)}</span>` : `<span class="bar"><i style="width:${pct}%;background:${priceColor(r.price)}"></i></span>`) +
+          `<span class="sub">${trendTag(r.price, yPrice(r.s.id))}${extra}</span>` +
           `</span></button>`;
       }).join('');
     }
 
+    function renderFavs() {
+      const rows = all.filter(r => favs.has(r.id));
+      $('favCard').hidden = !rows.length;
+      if (!rows.length) return;
+      const f = state.fuel, now = new Date();
+      $('favMeta').textContent = FUELS[f].short;
+      rows.sort((a, b) => (a.p[f] ?? Infinity) - (b.p[f] ?? Infinity));
+      $('favList').innerHTML = rows.map(s => {
+        const p = s.p[f];
+        return `<button class="st" data-id="${esc(s.id)}">` +
+          `<span class="n fv" aria-hidden="true">★</span>` +
+          `<span style="min-width:0"><span class="nm">${esc(s.rot)}</span>` +
+          `<span class="ad">${openTag(openInfo(s.hor, now))}${esc(nice(s.dir))} · ${esc(nice(s.loc))}</span></span>` +
+          `<span class="pr"><b>${p != null ? p.toFixed(3) : '—'}</b>` +
+          `<span class="sub">${trendTag(p, yPrice(s.id))}${state.user && s.lat != null ? `<span class="dist">${fmtDist(km(state.user, [s.lat, s.lon]))}</span>` : ''}</span>` +
+          `</span></button>`;
+      }).join('');
+    }
+
+    /* ---------- Gráfica de tendencia (media de la zona, 14 días + hoy) ---------- */
+    function trendSeries() {
+      if (!hist || hist.prov !== state.prov) return [];
+      const f = state.fuel, z = state.scope === 'city' ? 'c' : 'p';
+      const pts = Object.keys(hist.days).sort()
+        .map(iso => ({ iso, a: hist.days[iso][f]?.[z] }))
+        .filter(x => x.a && x.a[1])
+        .map(x => ({ iso: x.iso, v: x.a[0] / x.a[1] }));
+      const t = aggregate(all)[f]?.[z];
+      if (t && t[1] && !demoMode) pts.push({ iso: isoDay(new Date()), v: t[0] / t[1], today: true });
+      return pts;
+    }
+
+    let trendW = 0;
+    function renderTrend() {
+      const box = $('trend');
+      if (!box) return;
+      const pts = demoMode ? [] : trendSeries();
+      const progress = histState.loading ? `Descargando histórico del Ministerio… ${histState.done}/${histState.total}` : '';
+      if (pts.length < 2) {
+        box.innerHTML = demoMode
+          ? `<div class="empty">El histórico no está disponible en modo ejemplo.</div>`
+          : histState.loading || !hist
+            ? `<div class="sk" style="height:120px"></div><p class="tr-foot">${progress || 'Preparando histórico…'}</p>`
+            : `<div class="empty">Sin histórico disponible para ${esc(FUELS[state.fuel].short)} en esta zona.</div>`;
+        return;
+      }
+      const last = pts[pts.length - 1];
+      const byIso = Object.fromEntries(pts.map(p => [p.iso, p.v]));
+      const ago = n => byIso[isoDay(addDays(parseIso(last.iso), -n))];
+      const chip = (ref, lbl) => {
+        if (ref == null) return '';
+        const d = last.v - ref;
+        if (Math.abs(d) < 0.0005) return `<span class="delta">= ${lbl}</span>`;
+        return `<span class="delta ${d > 0 ? 'up' : 'down'}">${d > 0 ? '▲' : '▼'} ${ctsTxt(d)} cts ${lbl}</span>`;
+      };
+      const lo = pts.reduce((a, p) => p.v < a.v ? p : a), hi = pts.reduce((a, p) => p.v > a.v ? p : a);
+      box.innerHTML =
+        `<div class="tr-hero"><div><strong>${last.v.toFixed(3)}</strong> <small>${unit()} de media ${last.today ? 'hoy' : 'el ' + fmtDay(last.iso)}</small></div>` +
+        `<div class="deltas">${chip(ago(1), 'vs ayer')}${chip(ago(7), 'en 7 días')}</div></div>` +
+        `<div class="tr-chart" role="img" aria-label="Precio medio de ${esc(FUELS[state.fuel].short)}: de ${pts[0].v.toFixed(3)} el ${fmtDay(pts[0].iso)} a ${last.v.toFixed(3)} ${last.today ? 'hoy' : 'el ' + fmtDay(last.iso)}; mínimo ${lo.v.toFixed(3)} el ${fmtDay(lo.iso)}, máximo ${hi.v.toFixed(3)} el ${fmtDay(hi.iso)}"><svg></svg><div class="tt" hidden></div></div>` +
+        `<p class="tr-foot">Mín. ${lo.v.toFixed(3)} (${fmtDay(lo.iso)}) · máx. ${hi.v.toFixed(3)} (${fmtDay(hi.iso)})${progress ? ' · ' + progress : ''}</p>`;
+      drawTrend(box.querySelector('.tr-chart'), pts, lo);
+    }
+
+    function drawTrend(el, pts, minPt) {
+      const svg = el.querySelector('svg'), tt = el.querySelector('.tt');
+      const W = Math.max(240, Math.round(el.clientWidth || 320)), H = 120;
+      trendW = W;
+      const pl = 4, pr = 44, pt = 10, pb = 22;
+      const t0 = parseIso(pts[0].iso).getTime(), t1 = parseIso(pts[pts.length - 1].iso).getTime();
+      const X = p => pl + (t1 > t0 ? (parseIso(p.iso).getTime() - t0) / (t1 - t0) : .5) * (W - pl - pr);
+      const vs = pts.map(p => p.v);
+      let lo = Math.min(...vs), hi = Math.max(...vs);
+      const padV = Math.max((hi - lo) * .18, .003);
+      lo -= padV; hi += padV;
+      const Y = v => pt + (1 - (v - lo) / (hi - lo)) * (H - pt - pb);
+      const base = H - pb;
+      const line = pts.map((p, i) => (i ? 'L' : 'M') + X(p).toFixed(1) + ',' + Y(p.v).toFixed(1)).join('');
+      const first = pts[0], last = pts[pts.length - 1];
+      const area = line + `L${X(last).toFixed(1)},${base}L${X(first).toFixed(1)},${base}Z`;
+      const grid = [.33, .66].map(k => { const y = (pt + k * (base - pt)).toFixed(1); return `<line x1="${pl}" x2="${W - pr}" y1="${y}" y2="${y}" stroke="var(--line)" stroke-width="1"/>`; }).join('');
+      const minLabel = minPt !== last
+        ? `<circle cx="${X(minPt)}" cy="${Y(minPt.v)}" r="3" fill="var(--surface)" stroke="var(--brand-strong)" stroke-width="2"/>` +
+          `<text x="${Math.min(Math.max(X(minPt), pl + 16), W - pr - 16)}" y="${Math.min(Y(minPt.v) + 15, base - 3)}" text-anchor="middle" class="v">${minPt.v.toFixed(3)}</text>`
+        : '';
+      svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+      svg.setAttribute('width', W); svg.setAttribute('height', H);
+      svg.innerHTML =
+        grid +
+        `<line x1="${pl}" x2="${W - pr}" y1="${base}" y2="${base}" stroke="var(--line-2)" stroke-width="1"/>` +
+        `<path d="${area}" fill="var(--brand-soft)"/>` +
+        `<path d="${line}" fill="none" stroke="var(--brand-strong)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>` +
+        minLabel +
+        `<circle cx="${X(last)}" cy="${Y(last.v)}" r="4.5" fill="var(--brand-strong)" stroke="var(--surface)" stroke-width="2"/>` +
+        `<text x="${X(last) + 8}" y="${Y(last.v) + 4}" class="v">${last.v.toFixed(3)}</text>` +
+        `<text x="${pl}" y="${H - 6}">${fmtDay(first.iso)}</text>` +
+        `<text x="${X(last)}" y="${H - 6}" text-anchor="end">${last.today ? 'hoy' : fmtDay(last.iso)}</text>` +
+        `<line class="guide" x1="0" x2="0" y1="${pt}" y2="${base}" stroke="var(--muted)" stroke-width="1" stroke-dasharray="3 3" visibility="hidden"/>` +
+        `<circle class="hov" r="5" fill="var(--brand-strong)" stroke="var(--surface)" stroke-width="2" visibility="hidden"/>`;
+      const guide = svg.querySelector('.guide'), hov = svg.querySelector('.hov');
+      const show = clientX => {
+        const rect = svg.getBoundingClientRect();
+        const x = (clientX - rect.left) * (W / rect.width);
+        const p = pts.reduce((a, q) => Math.abs(X(q) - x) < Math.abs(X(a) - x) ? q : a);
+        const px = X(p), py = Y(p.v);
+        guide.setAttribute('x1', px); guide.setAttribute('x2', px); guide.setAttribute('visibility', 'visible');
+        hov.setAttribute('cx', px); hov.setAttribute('cy', py); hov.setAttribute('visibility', 'visible');
+        const d = parseIso(p.iso);
+        tt.innerHTML = `${p.today ? 'Hoy' : WDAYS[d.getDay()] + ' ' + fmtDay(p.iso)} · <b>${p.v.toFixed(3)}</b> ${unit()}`;
+        tt.hidden = false;
+        const scale = rect.width / W, tw = tt.offsetWidth;
+        tt.style.left = Math.min(Math.max(px * scale - tw / 2, 0), rect.width - tw) + 'px';
+        tt.style.top = Math.max(py * scale - 10, 0) + 'px';
+      };
+      const hide = () => { guide.setAttribute('visibility', 'hidden'); hov.setAttribute('visibility', 'hidden'); tt.hidden = true; };
+      el.onpointermove = e => show(e.clientX);
+      el.onpointerdown = e => show(e.clientX);
+      el.onpointerleave = hide;
+    }
+
     function select(id, scroll) {
       state.selected = id;
-      document.querySelectorAll('.st.sel').forEach(b => b.classList.remove('sel'));
+      writeHash();
+      document.querySelectorAll('#list .st.sel').forEach(b => b.classList.remove('sel'));
       if (!id) return;
-      const b = document.querySelector(`.st[data-id="${CSS.escape(String(id))}"]`);
+      const b = document.querySelector(`#list .st[data-id="${CSS.escape(String(id))}"]`);
       if (b) {
         b.classList.add('sel');
         // Solo en escritorio: en móvil no queremos que la página salte lejos del mapa
@@ -812,34 +1573,154 @@
       map.flyTo([r.lat, r.lon], Math.max(map.getZoom(), 16), { duration: .9 });
       if (m) map.once('moveend', () => m.openPopup());
     }
+    /* Abre una estación por id; si los filtros la ocultan, se quitan para poder mostrarla */
+    function focusById(id) {
+      let r = state.rows.find(x => x.s.id === id);
+      const s = all.find(x => x.id === id);
+      if (!r && s) {
+        if (s.p[state.fuel] == null) {
+          const f = FUEL_IDS.find(k => s.p[k] != null);
+          if (f) state.fuel = f;
+        }
+        Object.assign(state, { scope: s.city ? state.scope : 'prov', onlyTop: false, onlyOpen: false, brand: '' });
+        syncUI();
+        render();
+        r = state.rows.find(x => x.s.id === id);
+      }
+      if (r) focusStation(r);
+      else if (s) map.flyTo([s.lat, s.lon], 16);
+    }
 
     function setSort(s) {
+      if (s === 'real' && !isLiquid()) s = 'near';
       state.sort = s;
       document.querySelectorAll('[data-sort]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.sort === s)));
       renderList();
     }
 
-    async function load() {
-      const btn = $('reload');
-      btn.classList.add('spinning'); btn.disabled = true;
-      setStatus('Cargando precios oficiales…', { loading: true });
-      skeleton();
-      const { data, demo } = await fetchPrices();
+    /* ---------- Controles dinámicos ---------- */
+    function buildProvSelect() {
+      $('prov').innerHTML = Object.entries(PROVS)
+        .sort((a, b) => a[1][0].localeCompare(b[1][0], 'es'))
+        .map(([id, P]) => `<option value="${id}">${esc(P[0])}</option>`).join('');
+    }
+    function buildFuelChips() {
+      const avail = new Set(['g95', 'diesel']);
+      all.forEach(r => { if (r.venta !== 'R') for (const f in r.p) avail.add(f); });
+      if (!avail.has(state.fuel)) state.fuel = 'g95';
+      $('fuelChips').innerHTML = FUEL_IDS.filter(f => avail.has(f))
+        .map(f => `<button class="chip" data-fuel="${f}" aria-pressed="${f === state.fuel}" title="${esc(FUELS[f].label)}">${esc(FUELS[f].short)}</button>`).join('');
+    }
+    function buildBrands() {
+      const counts = new Map();
+      all.forEach(r => { if (r.venta !== 'R') counts.set(r.brand, (counts.get(r.brand) || 0) + 1); });
+      if (state.brand && state.brand !== 'lowcost' && !counts.has(state.brand)) state.brand = '';
+      const list = [...counts].filter(([b, n]) => n >= 2 || b === state.brand)
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'es')).slice(0, 30);
+      $('brand').innerHTML = `<option value="">Todas las marcas</option><option value="lowcost">Solo low-cost</option>` +
+        (list.length ? `<optgroup label="Marca">${list.map(([b, n]) => `<option value="${esc(b)}">${esc(brandName(b))} (${n})</option>`).join('')}</optgroup>` : '');
+      $('brand').value = state.brand;
+    }
+    function syncUI() {
+      const P = PROVS[state.prov];
+      $('prov').value = state.prov;
+      $('scopeCity').textContent = P[1];
+      document.querySelectorAll('[data-scope]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.scope === state.scope)));
+      document.querySelectorAll('[data-fuel]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.fuel === state.fuel)));
+      $('btnTop').setAttribute('aria-pressed', String(state.onlyTop));
+      $('btnOpen').setAttribute('aria-pressed', String(state.onlyOpen));
+      if ([...$('brand').options].some(o => o.value === state.brand)) $('brand').value = state.brand;
+      $('brandPick').classList.toggle('on', !!state.brand);
+      document.querySelectorAll('[data-sort]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.sort === state.sort)));
+      $('appTitle').textContent = 'Gasolineras ' + P[0];
+      document.title = 'Gasolineras ' + P[0];
+      $('map').setAttribute('aria-label', 'Mapa de gasolineras de ' + P[0]);
+      $('carSum').textContent = `${prefs.liters} L · ${String(prefs.cons).replace('.', ',')} L/100 km`;
+      $('liters').value = prefs.liters;
+      $('cons').value = prefs.cons;
+    }
+    function changeProvince(p) {
+      state.prov = p;
+      state.brand = '';
+      state.selected = null;
+      hist = null;
+      store.set('gs.prov', p);
+      syncUI();
+      if (map) { clearMarkers(); map.setView([PROVS[p][3], PROVS[p][4]], 11); }
+    }
+
+    /* ---------- Carga (caché local → API) ---------- */
+    const ago = t => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'hace un momento' : m < 60 ? `hace ${m} min` : `hace ${Math.round(m / 60)} h`; };
+    const shortFecha = f => { const w = String(f || '').split(' '); return w[1] ? w[0].slice(0, 5) + ' ' + w[1].slice(0, 5) : 'hoy'; };
+
+    function applyData(rows, fecha, { cachedAt = null, demo = false } = {}) {
+      all = rows;
       demoMode = demo;
       $('liveDot').classList.toggle('demo', demo);
+      const P = PROVS[state.prov];
       if (demo) {
-        all = SAMPLE.map(normalizeSample);
         $('subtitle').lastChild.textContent = 'Modo ejemplo · sin conexión con la API';
         $('updated').textContent = 'La API del Ministerio no respondió (sin red o bloqueo CORS). Se muestran 8 estaciones reales de ejemplo. Pulsa ↻ para reintentar.';
       } else {
-        all = (data.ListaEESSPrecio || []).map(normalizeApiRow);
-        const when = (data.Fecha || '').split(' ');
-        $('subtitle').lastChild.textContent = 'Precios oficiales' + (when[1] ? ' · ' + when[0] + ' ' + when[1].slice(0, 5) : ' · hoy');
-        $('updated').textContent = 'Actualizado ' + (data.Fecha || 'hoy') + ' · ' + all.length + ' estaciones en la provincia.';
+        const restricted = rows.filter(r => r.venta === 'R').length;
+        $('subtitle').lastChild.textContent = 'Precios oficiales · ' + shortFecha(fecha) + (cachedAt ? ' · guardados' : '');
+        $('updated').textContent = 'Actualizado ' + (fecha || 'hoy') + ' · ' + (rows.length - restricted) + ' estaciones de venta al público en la provincia de ' + P[0] +
+          (restricted ? ' (' + restricted + ' de venta restringida ocultas)' : '') +
+          (cachedAt ? ' · copia guardada ' + ago(cachedAt) : '') + '.';
       }
-      btn.classList.remove('spinning'); btn.disabled = false;
-      render();
-      if (demo) setStatus('Mostrando datos de ejemplo · pulsa ↻ para reintentar', { error: true });
+      buildFuelChips();
+      buildBrands();
+      syncUI();
+    }
+
+    let loadToken = 0;
+    async function load({ force = false } = {}) {
+      const token = ++loadToken, prov = state.prov;
+      const btn = $('reload');
+      const cached = store.get('gs.data.' + prov);
+      let shown = false;
+      if (cached?.rows?.length) {
+        applyData(cached.rows, cached.fecha, { cachedAt: cached.t });
+        render({ fit: true });
+        shown = true;
+        if (!force && Date.now() - cached.t < FRESH_MS) { afterLoad(prov); return; }
+      } else {
+        skeleton();
+      }
+      btn.classList.add('spinning'); btn.disabled = true;
+      setStatus(shown ? 'Actualizando precios…' : 'Cargando precios oficiales…', { loading: true });
+      try {
+        const data = await fetchWithFallback(apiNow(prov), 8000);
+        if (token !== loadToken) return;
+        const rows = (data.ListaEESSPrecio || []).map((s, i) => normalizeApiRow(s, i, prov));
+        if (!rows.length) throw new Error('Respuesta vacía');
+        storeBig('gs.data.' + prov, { t: Date.now(), fecha: data.Fecha, rows });
+        applyData(rows, data.Fecha);
+        render({ fit: !shown });
+      } catch (e) {
+        if (token !== loadToken) return;
+        if (shown) {
+          setStatus(`Sin conexión con la API · precios guardados ${ago(cached.t)}`, { error: true });
+          setTimeout(() => setStatus(''), 5000);
+        } else if (prov === '41') {
+          applyData(SAMPLE.map(normalizeSample), null, { demo: true });
+          render({ fit: true });
+          setStatus('Mostrando datos de ejemplo · pulsa ↻ para reintentar', { error: true });
+        } else {
+          applyData([], null);
+          render();
+          $('podium').innerHTML = '<div class="empty">No se pudieron cargar los precios. Pulsa ↻ para reintentar.</div>';
+          $('list').innerHTML = '';
+          setStatus('No se pudieron cargar los precios · pulsa ↻ para reintentar', { error: true });
+        }
+      } finally {
+        if (token === loadToken) { btn.classList.remove('spinning'); btn.disabled = false; }
+      }
+      if (token === loadToken) afterLoad(prov);
+    }
+    function afterLoad(prov) {
+      if (pendingFocus) { const id = pendingFocus; pendingFocus = null; focusById(id); }
+      if (!demoMode && all.length && (!hist || hist.prov !== prov || !histState.loading)) loadHistory(prov);
     }
 
     /* ---------- Arranque ---------- */
@@ -851,26 +1732,44 @@
     }
 
     function bindUI() {
+      $('prov').addEventListener('change', e => {
+        changeProvince(e.target.value);
+        load();
+      });
       document.querySelectorAll('[data-scope]').forEach(b => b.addEventListener('click', () => {
         state.scope = b.dataset.scope;
-        document.querySelectorAll('[data-scope]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
-        render();
+        syncUI();
+        render({ fit: true });
       }));
-      document.querySelectorAll('[data-fuel]').forEach(b => b.addEventListener('click', () => {
+      $('fuelChips').addEventListener('click', e => {
+        const b = e.target.closest('[data-fuel]');
+        if (!b) return;
         state.fuel = b.dataset.fuel;
-        document.querySelectorAll('[data-fuel]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+        if (state.sort === 'real' && !isLiquid()) state.sort = 'near';
+        syncUI();
         render();
-      }));
+      });
+      $('brand').addEventListener('change', e => {
+        state.brand = e.target.value;
+        syncUI();
+        render({ fit: true });
+      });
+      $('btnOpen').addEventListener('click', () => {
+        state.onlyOpen = !state.onlyOpen;
+        syncUI();
+        render();
+      });
       document.querySelectorAll('[data-sort]').forEach(b => b.addEventListener('click', () => {
-        if (b.dataset.sort === 'near' && !state.user) locate(false);
-        else setSort(b.dataset.sort);
+        const s = b.dataset.sort;
+        if (s !== 'price' && !state.user) locate(false, s);
+        else setSort(s);
       }));
       $('btnTop').addEventListener('click', () => {
         state.onlyTop = !state.onlyTop;
-        $('btnTop').setAttribute('aria-pressed', String(state.onlyTop));
-        render();
+        syncUI();
+        render({ fit: true });
       });
-      $('reload').addEventListener('click', load);
+      $('reload').addEventListener('click', () => load({ force: true }));
       let t = null;
       $('q').addEventListener('input', e => {
         clearTimeout(t);
@@ -882,12 +1781,72 @@
         const r = state.rows.find(x => String(x.s.id) === b.dataset.id);
         if (r) focusStation(r);
       });
+      $('favList').addEventListener('click', e => {
+        const b = e.target.closest('.st');
+        if (b) focusById(b.dataset.id);
+      });
+      // Tu coche
+      let pt = null;
+      const onPrefs = () => {
+        clearTimeout(pt);
+        pt = setTimeout(() => {
+          const l = parseFloat($('liters').value), c = parseFloat(String($('cons').value).replace(',', '.'));
+          if (Number.isFinite(l) && l >= 5 && l <= 150) prefs.liters = Math.round(l);
+          if (Number.isFinite(c) && c >= 2 && c <= 30) prefs.cons = Math.round(c * 10) / 10;
+          store.set('gs.prefs', prefs);
+          $('carSum').textContent = `${prefs.liters} L · ${String(prefs.cons).replace('.', ',')} L/100 km`;
+          render();
+        }, 350);
+      };
+      $('liters').addEventListener('input', onPrefs);
+      $('cons').addEventListener('input', onPrefs);
+      // Enlaces compartidos pegados en la barra de direcciones
+      window.addEventListener('hashchange', () => {
+        if (location.hash === '#' + hashFor()) return;
+        const prev = state.prov;
+        if (!readHash()) return;
+        syncUI();
+        if (state.prov !== prev) {
+          const p = state.prov;
+          state.prov = prev;
+          changeProvince(p);
+          load();
+        } else {
+          render({ fit: true });
+          afterLoad(state.prov);
+        }
+      });
+      // Redibujar la gráfica si cambia el ancho
+      if (window.ResizeObserver) {
+        let raf = 0;
+        new ResizeObserver(() => {
+          cancelAnimationFrame(raf);
+          raf = requestAnimationFrame(() => { if (Math.abs(($('trend').clientWidth || 0) - trendW) > 8) renderTrend(); });
+        }).observe($('trend'));
+      }
+      // El estado "abierta / cerrada" cambia con la hora
+      setInterval(() => { renderList(); renderFavs(); }, 5 * 60 * 1000);
+    }
+
+    function registerPWA() {
+      if (!/^https?:$/.test(location.protocol)) return;   // file:// no admite manifest ni service worker
+      const link = document.createElement('link');
+      link.rel = 'manifest'; link.href = 'manifest.webmanifest';
+      document.head.appendChild(link);
+      if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
     }
 
     async function boot() {
+      const savedProv = store.get('gs.prov');
+      if (PROVS[savedProv]) state.prov = savedProv;
+      readHash();
+      buildProvSelect();
+      syncUI();
       trackHeader();
       bindUI();
       skeleton();
+      renderTrend();
+      registerPWA();
       try {
         await ensureLeaflet();
       } catch (e) {
@@ -897,9 +1856,10 @@
         return;
       }
       try {
-        map = L.map('map', { zoomControl: true, tap: true }).setView([37.3891, -5.9845], 12);
+        const P = PROVS[state.prov];
+        map = L.map('map', { zoomControl: true }).setView([P[3], P[4]], 11);
         addTiles();
-        map.on('zoomend', refreshIcons);
+        map.on('zoomend', onZoom);
         const Locate = L.Control.extend({
           options: { position: 'topleft' },
           onAdd() {
