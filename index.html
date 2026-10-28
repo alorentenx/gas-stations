@@ -372,11 +372,11 @@
     .advice h3 svg.i { color: var(--good); }
     .advice p { margin: 4px 0 0; }
     .advice b { color: var(--ink); }
-    .advice .go {
+    .advice .go, .route-actions .go {
       margin-top: 10px; display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 6px 12px;
       border-radius: 10px; border: 0; background: var(--brand); color: var(--brand-ink); font-weight: 800; font-size: .82rem;
     }
-    .advice .go svg.i { width: 15px; height: 15px; }
+    .advice .go svg.i, .route-actions .go svg.i { width: 15px; height: 15px; }
     .advice small { display: block; margin-top: 8px; color: var(--muted); font-size: .72rem; }
     .advice-cta {
       width: 100%; display: flex; gap: 12px; align-items: center; text-align: left; margin-top: 12px;
@@ -386,6 +386,24 @@
     .advice-cta:hover { border-color: var(--brand); }
     .advice-cta b { color: var(--ink); font-size: .9rem; }
     .advice-cta svg.i { width: 26px; height: 26px; color: var(--brand-strong); }
+
+    /* Repostar en ruta */
+    #map.picking { cursor: crosshair; }
+    /* Con una ruta trazada solo se ven las estaciones de la ruta (y tu posición) */
+    .route-on .leaflet-marker-pane .gs-marker:not(.rt):not(.me-m) { display: none; }
+    .pin.dest { background: #2563eb; border-color: #1e3a8a; color: #fff; font-family: var(--font); }
+    .route-sum { margin: 0 0 10px; font-size: .8rem; line-height: 1.5; color: var(--ink-2); }
+    .route-tools { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; font-size: .76rem; font-weight: 600; color: var(--muted); }
+    .route-tools .seg button { padding: 5px 10px; min-height: 32px; }
+    #routeBox .advice { margin: 0 0 10px; }
+    #routeBox .advice-cta { margin-top: 0; }
+    .route-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .route-actions .ghost {
+      margin-top: 10px; min-height: 36px; padding: 6px 12px; border-radius: 10px;
+      border: 1px solid var(--line-2); background: var(--surface-2); color: var(--ink-2); font-weight: 700; font-size: .82rem;
+    }
+    .route-actions .ghost:hover { border-color: var(--brand); }
+    .route-note { display: block; margin-top: 10px; color: var(--muted); font-size: .72rem; line-height: 1.5; }
 
     /* Tendencia */
     .tr-hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; margin-bottom: 10px; }
@@ -567,6 +585,17 @@
         </div>
         <div class="podium" id="podium"></div>
         <div id="advice"></div>
+      </section>
+
+      <section class="card" aria-labelledby="hRoute">
+        <div class="card-head">
+          <div>
+            <div class="eyebrow">De viaje</div>
+            <h2 id="hRoute">Repostar en ruta</h2>
+          </div>
+          <span class="meta" id="routeMeta"></span>
+        </div>
+        <div id="routeBox"></div>
       </section>
 
       <section class="card" id="favCard" aria-labelledby="hFav" hidden>
@@ -1071,12 +1100,12 @@
        color (precio en tooltip) para que no se amontonen las etiquetas. */
     const PIN_ZOOM = 14;
     let priceRange = [0, 1];
-    const priceT = p => {
-      const [lo, hi] = priceRange;
+    const priceT = (p, range = priceRange) => {
+      const [lo, hi] = range;
       return hi > lo ? Math.min(1, Math.max(0, (p - lo) / (hi - lo))) : 0;
     };
-    function priceColor(p) {
-      const t = priceT(p);
+    function priceColor(p, range) {
+      const t = priceT(p, range);
       return `hsl(${Math.round(135 * (1 - t))}, ${65 + Math.round(15 * Math.sin(Math.PI * t))}%, ${42 + Math.round(4 * t)}%)`;
     }
     function iconFor(price, rank) {
@@ -1168,6 +1197,7 @@
       if (state.onlyTop) p.set('top', '1');
       if (state.onlyOpen) p.set('abiertas', '1');
       if (state.brand) p.set('marca', state.brand);
+      if (route.dest) p.set('ruta', route.dest.map(x => x.toFixed(4)).join(','));
       if (e) p.set('e', e);
       return p.toString();
     }
@@ -1185,6 +1215,9 @@
       state.onlyOpen = p.get('abiertas') === '1';
       state.brand = p.get('marca') || '';
       pendingFocus = p.get('e');
+      const rt = (p.get('ruta') || '').split(',').map(Number);
+      const dest = rt.length === 2 && inSpain(rt[0], rt[1]) ? rt : null;
+      if (String(dest) !== String(route.dest)) resetRoute(dest);
       return true;
     }
     async function share(r) {
@@ -1217,10 +1250,7 @@
       if (!navigator.geolocation) { setStatus('Tu navegador no permite obtener la ubicación', { error: true }); return; }
       setStatus('Buscando tu ubicación…', { loading: true });
       navigator.geolocation.getCurrentPosition(async pos => {
-        state.user = [pos.coords.latitude, pos.coords.longitude];
-        if (userMarker) userMarker.setLatLng(state.user);
-        else userMarker = L.marker(state.user, { icon: L.divIcon({ className: 'gs-marker', iconSize: null, html: '<div class="me"></div>' }), zIndexOffset: 20000, interactive: false, keyboard: false }).addTo(map);
-        document.querySelector('.locate-btn')?.classList.add('active');
+        placeUser([pos.coords.latitude, pos.coords.longitude]);
         // ¿Estás fuera de la provincia cargada? Se cambia a la de la capital más cercana
         let moved = false;
         const nearest = all.reduce((m, r) => r.lat == null ? m : Math.min(m, km(state.user, [r.lat, r.lon])), Infinity);
@@ -1246,6 +1276,327 @@
         setStatus('No se pudo obtener tu ubicación (permiso denegado o sin señal)', { error: true });
         setTimeout(() => setStatus(''), 4500);
       }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
+    }
+
+    function placeUser(pos) {
+      state.user = pos;
+      if (userMarker) userMarker.setLatLng(pos);
+      else userMarker = L.marker(pos, { icon: L.divIcon({ className: 'gs-marker me-m', iconSize: null, html: '<div class="me"></div>' }), zIndexOffset: 20000, interactive: false, keyboard: false }).addTo(map);
+      document.querySelector('.locate-btn')?.classList.add('active');
+    }
+    const getPosition = () => new Promise((resolve, reject) => {
+      if (!navigator.geolocation) { reject(new Error('Sin geolocalización')); return; }
+      navigator.geolocation.getCurrentPosition(p => resolve([p.coords.latitude, p.coords.longitude]), reject,
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
+    });
+
+    /* ---------- Repostar en ruta ----------
+       Origen: tu ubicación. Destino: un punto que eliges en el mapa. OSRM (servicio público, sin clave)
+       da la ruta por carretera; si no responde, se usa la línea recta. Se cargan las provincias que
+       cruza y se quedan las estaciones a menos de `corridor` km de la ruta. */
+    const OSRM = 'https://router.project-osrm.org/route/v1/driving/';
+    const CORRIDORS = [1, 2, 5];
+    const route = {
+      dest: null, picking: false, loading: false, progress: '', error: '',
+      line: null, segs: [], km: 0, mins: null, approx: false,
+      provs: [], missed: [], data: new Map(), rows: [],
+      corridor: CORRIDORS.includes(store.get('gs.corridor')) ? store.get('gs.corridor') : 2
+    };
+    let routeLayer = null, routeStLayer = null, routeMarkers = [], routeToken = 0;
+    const fmtDur = m => { const t = Math.round(m); return t < 60 ? t + ' min' : Math.floor(t / 60) + ' h ' + pad(t % 60) + ' min'; };
+
+    /* Quita puntos a menos de `minKm` del anterior: la geometría de OSRM trae miles */
+    function simplify(line, minKm) {
+      const out = [line[0]];
+      for (let i = 1; i < line.length - 1; i++) if (km(out[out.length - 1], line[i]) >= minKm) out.push(line[i]);
+      out.push(line[line.length - 1]);
+      return out;
+    }
+    /* Provincias que cruza la ruta: cada 5 km, la de la capital más cercana y las que están casi igual de cerca
+       (cerca de un límite, la capital más cercana no siempre es la de la provincia) */
+    function routeProvinces(line) {
+      const caps = Object.entries(PROVS).map(([id, P]) => [id, [P[3], P[4]]]);
+      const set = new Set();
+      const visit = pt => {
+        const ds = caps.map(([id, c]) => [id, km(pt, c)]);
+        const min = Math.min(...ds.map(d => d[1]));
+        ds.forEach(([id, d]) => { if (d <= min + 40) set.add(id); });
+      };
+      let acc = 0;   // km desde el último punto visitado
+      visit(line[0]);
+      for (let i = 1; i < line.length; i++) {
+        const a = line[i - 1], b = line[i], d = km(a, b);
+        for (let t = 5 - acc; t < d; t += 5) visit([a[0] + (b[0] - a[0]) * t / d, a[1] + (b[1] - a[1]) * t / d]);
+        acc = (acc + d) % 5;
+      }
+      visit(line[line.length - 1]);
+      return [...set];
+    }
+    /* Distancia (km) de un punto a la ruta y kilómetro de la ruta en que queda, o null si está a más de `w` km */
+    function projectOnRoute(p, w) {
+      const ky = 110.574, kx = 111.32 * Math.cos(p[0] * Math.PI / 180);
+      const dLat = w / ky, dLon = w / kx;
+      let best = null;
+      for (const s of route.segs) {
+        if (s.lat0 - dLat > p[0] || s.lat1 + dLat < p[0] || s.lon0 - dLon > p[1] || s.lon1 + dLon < p[1]) continue;
+        const ax = (s.a[1] - p[1]) * kx, ay = (s.a[0] - p[0]) * ky;
+        const vx = (s.b[1] - s.a[1]) * kx, vy = (s.b[0] - s.a[0]) * ky;
+        const l2 = vx * vx + vy * vy;
+        const t = l2 ? Math.min(1, Math.max(0, -(ax * vx + ay * vy) / l2)) : 0;
+        const d = Math.hypot(ax + t * vx, ay + t * vy);
+        if (d <= w && (!best || d < best.off)) best = { off: d, at: s.at + t * s.len };
+      }
+      return best;
+    }
+    /* Precios de una provincia para la ruta: los ya cargados, la caché si es fresca o la API */
+    async function provRows(p) {
+      if (p === state.prov && all.length && !demoMode) return all;
+      const cached = store.get('gs.data.' + p);
+      if (cached?.rows?.length && Date.now() - cached.t < FRESH_MS) return cached.rows;
+      try {
+        const data = await fetchWithFallback(apiNow(p), 8000);
+        const rows = (data.ListaEESSPrecio || []).map((s, i) => normalizeApiRow(s, i, p));
+        if (!rows.length) throw new Error('Respuesta vacía');
+        store.set('gs.data.' + p, { t: Date.now(), fecha: data.Fecha, rows });
+        return rows;
+      } catch (e) {
+        if (cached?.rows?.length) return cached.rows;
+        throw e;
+      }
+    }
+
+    function resetRoute(dest = null) {
+      routeToken++;
+      Object.assign(route, { dest, picking: false, loading: false, progress: '', error: '', line: null, segs: [], rows: [], provs: [], missed: [], data: new Map() });
+      if (map) $('map').classList.remove('picking');
+    }
+
+    async function calcRoute() {
+      if (!route.dest || !map) return;
+      const token = ++routeToken;
+      Object.assign(route, { loading: true, error: '', progress: 'Buscando tu ubicación…', line: null, rows: [] });
+      drawRoute(); renderRoute();
+      const fail = msg => {
+        if (token !== routeToken) return;
+        Object.assign(route, { loading: false, error: msg });
+        setStatus('');
+        renderRoute();
+      };
+      if (!state.user) {
+        try { placeUser(await getPosition()); } catch (e) { fail('Hace falta tu ubicación como punto de partida (permiso denegado o sin señal).'); return; }
+        if (token !== routeToken) return;
+        render();
+      }
+      const o = state.user, d = route.dest;
+      if (km(o, d) < 3) { fail('El destino está demasiado cerca de ti: elige un punto a más de 3 km.'); return; }
+
+      route.progress = 'Calculando la ruta…';
+      renderRoute();
+      setStatus(route.progress, { loading: true });
+      let line, dist, mins = null, approx = false;
+      try {
+        const res = await fetchJSON(`${OSRM}${o[1]},${o[0]};${d[1]},${d[0]}?overview=full&geometries=geojson`, 12000);
+        const r = res.routes?.[0];
+        if (!r?.geometry?.coordinates?.length) throw new Error('Sin ruta');
+        line = r.geometry.coordinates.map(([lon, lat]) => [lat, lon]);
+        dist = r.distance / 1000;
+        mins = r.duration / 60;
+      } catch (e) {
+        line = [o, d]; dist = km(o, d) * ROAD; approx = true;
+      }
+      if (token !== routeToken) return;
+      line = simplify(line, .25);
+      let at = 0;
+      const segs = line.slice(1).map((b, i) => {
+        const a = line[i], len = km(a, b);
+        const s = { a, b, at, len, lat0: Math.min(a[0], b[0]), lat1: Math.max(a[0], b[0]), lon0: Math.min(a[1], b[1]), lon1: Math.max(a[1], b[1]) };
+        at += len;
+        return s;
+      });
+      const provs = routeProvinces(line);
+      Object.assign(route, { line, segs, km: dist, mins, approx, provs, missed: [], data: new Map() });
+      drawRoute();
+      map.fitBounds(line, { padding: [40, 40] });
+
+      // Precios de cada provincia, 3 a la vez
+      let next = 0, done = 0;
+      const worker = async () => {
+        while (next < provs.length && token === routeToken) {
+          const p = provs[next++];
+          try { route.data.set(p, await provRows(p)); } catch (e) { route.missed.push(p); }
+          if (token !== routeToken) return;
+          route.progress = `Cargando precios de ${provs.length} provincia${provs.length === 1 ? '' : 's'}… ${++done}/${provs.length}`;
+          setStatus(route.progress, { loading: true });
+          renderRoute();
+        }
+      };
+      await Promise.all([worker(), worker(), worker()]);
+      if (token !== routeToken) return;
+      route.loading = false;
+      updateRoute();
+      setStatus(`${route.rows.length} gasolineras en tu ruta · ${FUELS[state.fuel].short}`);
+    }
+
+    /* Estaciones del corredor con su coste real: repostaje + desvío de ida y vuelta desde la ruta */
+    function updateRoute() {
+      if (!route.line || route.loading) return;
+      const f = state.fuel, now = new Date(), out = [];
+      for (const rows of route.data.values()) {
+        for (const s of rows) {
+          if (s.venta === 'R' || s.lat == null || s.p[f] == null || !brandOk(s)) continue;
+          if (state.onlyOpen && openInfo(s.hor, now)?.open === false) continue;
+          const pr = projectOnRoute([s.lat, s.lon], route.corridor);
+          if (!pr) continue;
+          out.push({ s, price: s.p[f], lat: s.lat, lon: s.lon, off: pr.off, at: pr.at, real: isLiquid() ? realCost(s.p[f], pr.off) : null });
+        }
+      }
+      out.sort((a, b) => (a.real ?? a.price) - (b.real ?? b.price) || a.price - b.price || a.at - b.at);
+      route.rows = out;
+      drawRouteMarkers();
+      renderRoute();
+    }
+
+    function drawRoute() {
+      if (!map) return;
+      if (!routeLayer) routeLayer = L.layerGroup().addTo(map);
+      routeLayer.clearLayers();
+      if (!route.line) { routeStLayer?.clearLayers(); routeMarkers = []; }
+      $('map').classList.toggle('route-on', !!route.line);
+      if (route.line) {
+        L.polyline(route.line, { color: '#2563eb', weight: 5, opacity: .7, dashArray: route.approx ? '8 8' : null, interactive: false }).addTo(routeLayer);
+      }
+      if (route.dest) {
+        L.marker(route.dest, { icon: L.divIcon({ className: 'gs-marker rt', iconSize: null, html: '<div class="pin dest">Destino</div>' }),
+          zIndexOffset: 15000, interactive: false, keyboard: false }).addTo(routeLayer);
+      }
+    }
+
+    function drawRouteMarkers() {
+      if (!routeStLayer) routeStLayer = L.layerGroup().addTo(map);
+      routeStLayer.clearLayers();
+      routeMarkers = [];
+      const rows = route.rows;
+      if (!rows.length) return;
+      const prices = rows.map(r => r.price), range = [Math.min(...prices), Math.max(...prices)];
+      rows.forEach((r, i) => {
+        const top = i < 3;
+        const tip = r.s.rot + ' · ' + r.price.toFixed(3) + ' ' + unit();
+        const m = L.marker([r.lat, r.lon], {
+          icon: L.divIcon({ className: 'gs-marker rt', iconSize: null, popupAnchor: [0, top ? -38 : -8],
+            html: top ? `<div class="pin top top${i + 1}"><span class="rk">${i + 1}</span>${r.price.toFixed(3)}</div>`
+              : `<div class="dot" style="background:${priceColor(r.price, range)}"></div>` }),
+          zIndexOffset: top ? 10000 - i : -i, riseOnHover: true, title: tip
+        });
+        if (!top) m.bindTooltip(tip, { direction: 'top', offset: [0, -8] });
+        m.__id = r.s.id;
+        m.bindPopup(() => routePopup(r, i), { maxWidth: 300, autoPanPadding: [20, 70] });
+        m.addTo(routeStLayer);
+        routeMarkers.push(m);
+      });
+    }
+
+    function routePopup(r, i) {
+      const info = openInfo(r.s.hor);
+      // Google Maps: ruta hasta el destino con parada en la gasolinera
+      const via = `https://www.google.com/maps/dir/?api=1&destination=${route.dest[0]},${route.dest[1]}&waypoints=${r.lat},${r.lon}`;
+      return `<div class="pp-brand">${esc(r.s.rot)}</div>` +
+        `<div class="pp-addr">${esc(nice(r.s.dir))} · ${esc(nice(r.s.loc))}${r.s.cp ? ' (' + esc(r.s.cp) + ')' : ''}</div>` +
+        `<div class="pp-row"><span class="pp-price">${r.price.toFixed(3)} <small>${unit()}</small></span>` +
+        `<span class="pp-tag${i < 3 ? ' good' : ''}">#${i + 1} en tu ruta</span></div>` +
+        `<div class="pp-real">${icon('i-nav')}<span>Km ${Math.round(r.at)} de la ruta · desvío ${fmtDist(r.off)}</span></div>` +
+        (r.real != null ? `<div class="pp-real">${icon('i-car')}<span>${prefs.liters} L + desvío: <b>${eur2(r.real)} €</b></span></div>` : '') +
+        (r.s.hor ? `<div class="pp-hours" style="margin-top:6px">${icon('i-clock')}<span>${info ? `<b class="${info.open ? 'on' : 'off'}">${esc(info.text)}</b><br>` : ''}${esc(r.s.hor)}</span></div>` : '') +
+        `<div class="pp-actions"><a class="pp-go" target="_blank" rel="noopener" href="${via}">${icon('i-nav')}Ruta con parada aquí</a></div>`;
+    }
+
+    function renderRoute() {
+      const box = $('routeBox');
+      if (!box) return;
+      $('routeMeta').textContent = route.line && !route.loading
+        ? fmtDist(route.km) + (route.mins != null ? ' · ' + fmtDur(route.mins) : ' aprox.') : '';
+      const actions = (...btns) => `<div class="route-actions">${btns.map(([act, txt, main]) =>
+        `<button class="${main ? 'go' : 'ghost'}" data-route="${act}">${main ? icon('i-nav') : ''}${txt}</button>`).join('')}</div>`;
+
+      if (route.picking) {
+        box.innerHTML = `<div class="advice"><h3>${icon('i-pin')}Toca el mapa en tu destino</h3>` +
+          `<p>Aleja el mapa si lo necesitas. El origen es tu ubicación actual.</p>${actions(['cancel', 'Cancelar'])}</div>`;
+        return;
+      }
+      if (!route.dest) {
+        box.innerHTML = `<button class="advice-cta" data-route="pick">${icon('i-nav')}<span><b>¿Vas de viaje?</b><br>` +
+          `Elige tu destino en el mapa y te enseñamos las gasolineras más baratas que pillan de camino, contando el desvío.</span></button>`;
+        return;
+      }
+      if (route.loading) {
+        box.innerHTML = `<div class="sk" style="height:64px"></div><p class="tr-foot">${esc(route.progress)}</p>`;
+        return;
+      }
+      if (!route.line) {
+        box.innerHTML = `<p class="route-sum">${route.error ? esc(route.error) : 'Destino marcado en el mapa. El origen será tu ubicación actual.'}</p>` +
+          actions(['calc', 'Calcular ruta', true], ['pick', 'Cambiar destino'], ['clear', 'Quitar']);
+        return;
+      }
+
+      const rows = route.rows, F = FUELS[state.fuel];
+      const missed = route.missed.length ? ` Sin datos de ${route.missed.map(p => PROVS[p][0]).join(', ')}.` : '';
+      let html = `<p class="route-sum">${route.approx ? '<b>Servicio de rutas no disponible:</b> se usa la línea recta (distancia aproximada). ' : ''}` +
+        `${rows.length} gasolinera${rows.length === 1 ? '' : 's'} con ${esc(F.short)} a menos de ${route.corridor} km de la ruta · ` +
+        `${route.provs.length} provincia${route.provs.length === 1 ? '' : 's'}.${missed}</p>` +
+        `<div class="route-tools"><span>Desvío máximo</span><div class="seg" role="group" aria-label="Desvío máximo desde la ruta">` +
+        CORRIDORS.map(c => `<button data-corr="${c}" aria-pressed="${c === route.corridor}">${c} km</button>`).join('') + `</div></div>`;
+
+      if (!rows.length) {
+        html += `<div class="empty">Ninguna gasolinera cerca de la ruta con estos filtros. Prueba a ampliar el desvío máximo.</div>`;
+      } else {
+        const best = rows[0];
+        const avg = rows.reduce((a, r) => a + r.price, 0) / rows.length;
+        if (best.real != null) {
+          const save = avg * prefs.liters - best.real;
+          html += `<div class="advice"><h3>${icon('i-check')}Para en ${esc(best.s.rot)}</h3>` +
+            `<p>Km ${Math.round(best.at)} · desvío ${fmtDist(best.off)} · ${best.price.toFixed(3)} €/L → <b>${eur2(best.real)} €</b> por ${prefs.liters} L contando el desvío.</p>` +
+            (save >= 0.05 ? `<p>Ahorras <b>${eur2(save)} €</b> frente a repostar al precio medio del trayecto (${avg.toFixed(3)} €/L).</p>` : '') +
+            `</div>`;
+        }
+        const now = new Date();
+        html += `<div class="list">` + rows.slice(0, 5).map((r, i) =>
+          `<button class="st${i < 3 ? ' top t' + (i + 1) : ''}" data-rid="${esc(r.s.id)}">` +
+          `<span class="n">${i + 1}</span>` +
+          `<span style="min-width:0"><span class="nm">${esc(r.s.rot)}</span>` +
+          `<span class="ad">${openTag(openInfo(r.s.hor, now))}Km ${Math.round(r.at)} · desvío ${fmtDist(r.off)} · ${esc(nice(r.s.loc))}</span></span>` +
+          `<span class="pr"><b style="${i < 3 ? 'color:var(--good)' : ''}">${r.price.toFixed(3)}</b>` +
+          `<span class="sub">${r.real != null ? `<span class="real" title="Coste real: ${prefs.liters} L + desvío">${eur2(r.real)} €</span>` : ''}</span></span></button>`
+        ).join('') + `</div>`;
+      }
+      html += actions(['pick', 'Cambiar destino'], ['clear', 'Quitar ruta']) +
+        `<small class="route-note">Se ordena por coste real: repostaje + desvío de ida y vuelta desde la ruta (línea recta ×1,3). ` +
+        `«Abiertas ahora» usa la hora actual, no la de llegada. El origen y el destino se envían a OSRM (servicio público de rutas) para trazar el recorrido.</small>`;
+      box.innerHTML = html;
+    }
+
+    function startPick() {
+      if (!map) return;
+      route.picking = true;
+      $('map').classList.add('picking');
+      if (!isDesktop()) document.querySelector('.map-card').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (map.getZoom() > 8) map.setZoom(7);
+      setStatus('Toca el mapa en tu destino', { sticky: true });
+      renderRoute();
+    }
+    function onMapClick(e) {
+      if (!route.picking) return;
+      const { lat, lng } = e.latlng;
+      if (!inSpain(lat, lng)) { setStatus('Elige un destino dentro de España', { error: true, sticky: true }); return; }
+      resetRoute([lat, lng]);
+      writeHash();
+      calcRoute();
+    }
+    function clearRoute() {
+      resetRoute();
+      setStatus('');
+      writeHash();
+      drawRoute();
+      renderRoute();
+      render({ fit: true });
     }
 
     /* ---------- Render ---------- */
@@ -1300,6 +1651,7 @@
       writeHash();
       renderFavs();
       renderTrend();
+      updateRoute();   // los filtros y «Tu coche» también cambian la ruta
 
       if (!rows.length) {
         const filtered = state.onlyOpen || state.brand;
@@ -1363,7 +1715,7 @@
       });
       refreshIcons();
       renderList();
-      if (fit && bounds.length) map.fitBounds(bounds, { padding: [56, 56], maxZoom: 15 });
+      if (fit && bounds.length && !route.line) map.fitBounds(bounds, { padding: [56, 56], maxZoom: 15 });
     }
 
     /* ¿Me compensa ir? Compara coste real (repostaje + viaje) entre la mejor opción, la más cercana y la más barata */
@@ -1566,8 +1918,8 @@
       }
     }
 
-    function focusStation(r) {
-      const m = markers.find(x => x.__id === r.s.id);
+    function focusStation(r, list = markers) {
+      const m = list.find(x => x.__id === r.s.id);
       if (!isDesktop()) document.querySelector('.map-card').scrollIntoView({ behavior: 'smooth', block: 'center' });
       map.closePopup();
       map.flyTo([r.lat, r.lon], Math.max(map.getZoom(), 16), { duration: .9 });
@@ -1785,6 +2137,23 @@
         const b = e.target.closest('.st');
         if (b) focusById(b.dataset.id);
       });
+      // Repostar en ruta
+      $('routeBox').addEventListener('click', e => {
+        const act = e.target.closest('[data-route]')?.dataset.route;
+        if (act === 'pick') startPick();
+        else if (act === 'cancel') { route.picking = false; $('map').classList.remove('picking'); setStatus(''); renderRoute(); }
+        else if (act === 'calc') calcRoute();
+        else if (act === 'clear') clearRoute();
+        const c = e.target.closest('[data-corr]');
+        if (c) {
+          route.corridor = +c.dataset.corr;
+          store.set('gs.corridor', route.corridor);
+          updateRoute();
+        }
+        const st = e.target.closest('.st[data-rid]');
+        const r = st && route.rows.find(x => String(x.s.id) === st.dataset.rid);
+        if (r) focusStation(r, routeMarkers);
+      });
       // Tu coche
       let pt = null;
       const onPrefs = () => {
@@ -1806,6 +2175,8 @@
         const prev = state.prov;
         if (!readHash()) return;
         syncUI();
+        drawRoute();
+        renderRoute();
         if (state.prov !== prev) {
           const p = state.prov;
           state.prov = prev;
@@ -1846,6 +2217,7 @@
       bindUI();
       skeleton();
       renderTrend();
+      renderRoute();
       registerPWA();
       try {
         await ensureLeaflet();
@@ -1860,6 +2232,7 @@
         map = L.map('map', { zoomControl: true }).setView([P[3], P[4]], 11);
         addTiles();
         map.on('zoomend', onZoom);
+        map.on('click', onMapClick);
         const Locate = L.Control.extend({
           options: { position: 'topleft' },
           onAdd() {
@@ -1876,6 +2249,7 @@
         setStatus('El mapa no pudo iniciarse en este navegador.', { error: true });
         return;
       }
+      drawRoute();   // destino de un enlace compartido (se calcula al pulsar «Calcular ruta»)
       load();
     }
     boot();
