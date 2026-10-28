@@ -1,6 +1,6 @@
 # ⛽ Gasolineras
 
-Mapa interactivo de gasolineras de España con **precios oficiales en tiempo real** del Ministerio para la Transición Ecológica. Muestra las 3 más baratas de tu zona, calcula si **de verdad te compensa** desplazarte a una gasolinera más barata, enseña la **tendencia de precios** de las últimas dos semanas y funciona como **app instalable** con soporte sin conexión.
+Mapa interactivo de gasolineras de España con **precios oficiales en tiempo real** del Ministerio para la Transición Ecológica. Muestra las 3 más baratas de tu zona, calcula si **de verdad te compensa** desplazarte a una gasolinera más barata, te dice **dónde repostar en un viaje**, enseña la **tendencia de precios** de las últimas dos semanas y funciona como **app instalable** con soporte sin conexión.
 
 Es una aplicación web estática: HTML, CSS y JavaScript sin frameworks, sin paso de compilación y sin servidor propio.
 
@@ -76,6 +76,24 @@ La tarjeta de recomendación indica:
 
 La lista se puede ordenar por **Precio**, **Cerca** (distancia) o **Real** (coste real).
 
+### 🛣️ Repostar en ruta
+¿Vas de viaje? Elige el destino **pulsando en el mapa** y la app te enseña las gasolineras más baratas **que pillan de camino**, aunque estén en otras provincias.
+
+- **Origen:** tu ubicación actual. **Destino:** el punto que marques en el mapa.
+- **Ruta por carretera** con [OSRM](https://project-osrm.org/) (servicio público, sin clave). Si no responde, se usa la línea recta entre origen y destino (se dibuja discontinua y se avisa).
+- **Provincias que cruza:** se recorre la ruta cada 5 km y se cargan las provincias cercanas (3 en paralelo). Se reutiliza la caché de precios de cada una.
+- **Corredor:** solo cuentan las estaciones a menos de **1, 2 o 5 km** de la ruta (por defecto 2 km).
+- **Coste real en ruta:** el mismo cálculo que «¿Te compensa ir?», pero con el desvío desde la ruta en lugar de la distancia desde tu posición:
+
+  ```
+  coste real = precio × (litros a repostar + 2 × desvío × 1,3 × consumo / 100)
+  ```
+- La tarjeta recomienda **dónde parar**, en qué **kilómetro** del trayecto queda, cuánto te desvías y cuánto **ahorras** frente al precio medio del trayecto. Debajo, las 5 mejores opciones.
+- En el mapa se ven la ruta, el destino y solo las estaciones del corredor (podio y puntos de color).
+- **«Ruta con parada aquí»** abre Google Maps hacia tu destino con la gasolinera como parada.
+- Respeta los filtros de carburante, marca y «Abiertas ahora», y los datos de «Tu coche».
+- El destino va en la URL (`ruta=`), así que la ruta se puede compartir. Al abrir el enlace se calcula desde la ubicación de quien lo abre.
+
 ### 🕐 Horarios
 - Interpreta los horarios del Ministerio: `L-D: 24H`, `L-V: 06:00-22:00; S-D: 07:00-15:00`, tramos partidos, horarios que cruzan la medianoche, etc.
 - Indica si la estación está **abierta o cerrada ahora**, a qué hora **cierra** o cuándo **vuelve a abrir** («abre mañana a las 07:00»).
@@ -114,6 +132,7 @@ La lista se puede ordenar por **Precio**, **Cerca** (distancia) o **Real** (cost
 | Abrir la app | Precios de la última provincia consultada (Sevilla por defecto) |
 | Pulsar 📍 en el mapa | Centra el mapa en tu posición y ordena la lista por cercanía |
 | Pulsar «¿Te compensa ir a la más barata?» | Calcula el coste real y recomienda la mejor opción |
+| Pulsar «¿Vas de viaje?» y tocar el mapa | Traza la ruta hasta ese punto y recomienda dónde repostar por el camino |
 | Pulsar una estación de la lista | El mapa vuela hasta ella y abre su ficha |
 | Pulsar ⭐ en la ficha | La añade a «Tus gasolineras» |
 | Pulsar ↻ | Fuerza la descarga de precios nuevos |
@@ -201,6 +220,7 @@ Base: `https://energia.serviciosmin.gob.es/ServiciosRestCarburantes/`
 
 - Los precios se actualizan aproximadamente cada 30 minutos.
 - Los identificadores de provincia son los códigos INE (`01` Álava … `52` Melilla).
+- **Rutas:** [OSRM](https://project-osrm.org/) (`router.project-osrm.org/route/v1/driving/…`), servidor de demostración público y gratuito. Tiempo límite de 12 s; si falla, se usa la línea recta.
 - **Tolerancia a fallos:** cada petición tiene un tiempo límite (8 s para precios, 15 s para histórico). Si falla, se reintenta a través de dos proxies CORS públicos (`corsproxy.io`, `allorigins.win`). La app recuerda la última fuente que funcionó para no perder tiempo en las siguientes peticiones.
 
 ---
@@ -229,6 +249,7 @@ en segundo plano ─► loadHistory() ─► 14 días (solo los que falten) ─�
 | Datos y red | `fetchJSON`, `fetchWithFallback`, `normalizeApiRow`, `load`, `applyData` |
 | Horarios | `parseHours`, `openInfo` |
 | Coste real | `km` (haversine), `realCost`, `renderAdvice` |
+| Ruta | `calcRoute`, `routeProvinces`, `projectOnRoute`, `updateRoute`, `renderRoute` |
 | Histórico | `loadHistory`, `aggregate`, `trendSeries`, `renderTrend`, `drawTrend` |
 | Mapa | `addTiles`, `iconFor`, `refreshIcons`, `popupFor`, `focusStation` |
 | Estado y URL | `state`, `syncUI`, `hashFor`, `readHash`, `writeHash` |
@@ -251,7 +272,8 @@ Todo se guarda en el navegador del usuario. No hay cuentas ni servidor.
 | `gs.prov` | Última provincia consultada |
 | `gs.prefs` | Litros a repostar y consumo del coche |
 | `gs.favs` | IDs de las gasolineras favoritas |
-| `gs.data.<prov>` | Última respuesta de precios (normalizada) y su hora |
+| `gs.data.<prov>` | Última respuesta de precios (normalizada) y su hora. También las provincias que cruza una ruta |
+| `gs.corridor` | Desvío máximo de «Repostar en ruta» (1, 2 o 5 km) |
 | `gs.hist.<prov>` | Agregados diarios de 14 días y precios de ayer por estación |
 
 Si el espacio se agota, se liberan automáticamente las cachés de otras provincias. Si `localStorage` no está disponible (modo privado estricto), la app funciona igual, sin persistencia.
@@ -277,6 +299,7 @@ https://gas-stations.aloal.workers.dev/#prov=41&fuel=diesel&zona=prov&abiertas=1
 | `abiertas` | `1` | Solo abiertas ahora |
 | `marca` | `lowcost` o nombre de marca | Filtro de marca |
 | `e` | ID de estación (`IDEESS`) | Abre esa estación al cargar |
+| `ruta` | `lat,lon` | Destino de «Repostar en ruta» (se calcula al pulsar «Calcular ruta») |
 
 Si un enlace apunta a una estación oculta por los filtros actuales, los filtros se relajan para poder mostrarla.
 
@@ -299,7 +322,7 @@ Si un enlace apunta a una estación oculta por los filtros actuales, los filtros
 
 - **Subresource Integrity (SRI)** en Leaflet (JS y CSS), con el mismo hash verificado en los tres CDN.
 - Todo el texto que viene de la API se **escapa** antes de insertarse en el HTML.
-- Sin cookies, sin analítica, sin datos personales fuera del navegador. La ubicación se usa solo en el dispositivo para calcular distancias y **nunca se envía** a ningún servidor.
+- Sin cookies, sin analítica, sin datos personales fuera del navegador. La ubicación se usa en el dispositivo para calcular distancias. **Solo sale del navegador si usas «Repostar en ruta»**: entonces el origen y el destino se envían a OSRM para trazar el recorrido (la tarjeta lo avisa).
 - Si la API directa falla, los proxies CORS públicos de reserva reciben la URL de la API. No reciben datos del usuario.
 
 ---
@@ -311,6 +334,7 @@ Si un enlace apunta a una estación oculta por los filtros actuales, los filtros
 - **Horarios:** dependen de lo que declara cada estación al Ministerio. Algunos están incompletos o mal escritos.
 - **Histórico:** la primera vez en cada provincia descarga 14 días (unas decenas de segundos en segundo plano). Después solo el día nuevo.
 - **Proxies públicos:** son de terceros y pueden fallar o limitar peticiones.
+- **Repostar en ruta:** OSRM es un servidor de demostración sin garantías de disponibilidad. Las provincias se eligen por cercanía a su capital, así que en algún límite puede faltar alguna. El desvío se mide en línea recta ×1,3 y «Abiertas ahora» usa la hora actual, no la de llegada.
 - **Low-cost:** es una clasificación propia (todo lo que no es una gran petrolera), no oficial.
 
 ---
